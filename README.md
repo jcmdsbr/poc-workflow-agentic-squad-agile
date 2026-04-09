@@ -1,135 +1,202 @@
-# POC Agent — Pipeline de Agentes para Azure DevOps
+# poc-agent — Pipeline Multi-Agente para Azure DevOps
 
-Pipeline de agentes de IA que lê uma **especificação funcional** e cria automaticamente **Features**, **User Stories** e **Tasks** no Azure DevOps, usando LLM local (Ollama + Llama 3.1) e o framework [CrewAI](https://docs.crewai.com/).
+Pipeline automatizado que lê uma **especificação funcional** e cria, no Azure DevOps, a hierarquia completa de **Features → User Stories → Tasks** usando agentes de IA especializados ([CrewAI](https://docs.crewai.com/)).
 
-## Como funciona
+Suporta múltiplos providers de LLM (Ollama, Gemini, OpenAI) com troca por variável de ambiente.
 
-O pipeline executa 4 agentes em sequência, onde cada um recebe o resultado do anterior:
+## Visão Geral da Arquitetura
 
 ```
 Especificação (.md)
-       │
-       ▼
-┌─────────────────┐
-│   Arquiteto      │  Lê a spec e gera documento de arquitetura técnica
-└────────┬────────┘
-         │ (documento .md)
-         ▼
-┌─────────────────┐
-│  Product Owner   │  Lê a arquitetura e cria Features no Azure DevOps
-└────────┬────────┘
-         │ (IDs das Features)
-         ▼
-┌─────────────────┐
-│   Tech Lead      │  Decompõe Features em User Stories (vinculadas via parent_id)
-└────────┬────────┘
-         │ (IDs das User Stories)
-         ▼
-┌─────────────────┐
-│  Desenvolvedor   │  Decompõe User Stories em Tasks técnicas (vinculadas via parent_id)
-└─────────────────┘
+        │
+        ▼
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Bic          │     │  Mimi         │     │  Givaldo      │     │  Jaiminho     │
+│  Arquiteto    │────▶│  Product Owner│────▶│  Tech Lead    │────▶│  Desenvolvedor│
+│  Análise Arq. │     │  Features     │     │  User Stories │     │  Tasks        │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+                            │                    │                    │
+                            ▼                    ▼                    ▼
+                     ┌─────────────────────────────────────────────────────┐
+                     │              Azure DevOps (REST API)                │
+                     │    Features ← User Stories ← Tasks (hierárquico)   │
+                     └─────────────────────────────────────────────────────┘
 ```
 
-### Conceitos-chave de Agentes usados
+### Agentes
 
-| Conceito | Onde está | Para que serve |
-|---|---|---|
-| **Agent** | `workflow.py` → `create_agents()` | Cada agente tem um `role`, `goal` e `backstory` que definem seu comportamento. O LLM usa essas informações para "interpretar" o papel. |
-| **Tool** | `tools.py` → `AzureDevOpsTool` | Ferramentas são funções que o agente pode invocar. Aqui, a tool chama a API REST do Azure DevOps. O schema Pydantic garante que o LLM passe os parâmetros corretos. |
-| **Task** | `workflow.py` → `create_tasks()` | Cada task descreve **o que** o agente deve fazer. O `expected_output` ajuda o LLM a saber quando terminou. |
-| **context** | `context=[task_anterior]` nas Tasks | **Encadeia a saída de uma task como entrada da próxima.** Sem isso, o agente não recebe os IDs criados pelo agente anterior. |
-| **Crew** | `workflow.py` → `main()` | Orquestra agentes + tasks. `Process.sequential` executa na ordem definida. |
+| Agente | Papel | Saída |
+|--------|-------|-------|
+| **Bic** | Arquiteto de Software (.NET, 15+ anos) | Documento de arquitetura Markdown (CQRS, DDD, Hexagonal) |
+| **Mimi** | Product Owner (CSPO, 12+ anos) | 2-3 Features no Azure DevOps com descrição estruturada |
+| **Givaldo** | Tech Lead (CSM, 10+ anos) | Até 5 User Stories por Feature (INVEST + Gherkin BDD) |
+| **Jaiminho** | Desenvolvedor Sênior (.NET, 10+ anos) | 5 Tasks por User Story cobrindo todas as camadas |
 
-## Estrutura do projeto
+O pipeline é **sequencial**: cada agente recebe o output do anterior via `context`, garantindo rastreabilidade hierárquica.
+
+## Estrutura do Projeto
 
 ```
-├── workflow.py          # Orquestração: agentes, tasks e execução
-├── tools.py             # Ferramenta de integração com Azure DevOps
-├── requirements.txt     # Dependências Python
-├── Dockerfile           # Container para execução
-├── .env.example         # Template de variáveis de ambiente
-└── specs/
-    └── exemplo_estorno.md   # Exemplo de especificação funcional
+├── config.py          # Configuração: LLM factory, provider auto-detection, rate limiter
+├── tools.py           # Ferramenta Azure DevOps + validação de hierarquia (WorkItemRegistry)
+├── workflow.py        # Orquestrador principal (Crew + Process.sequential)
+├── agents/
+│   ├── __init__.py    # Re-exporta todas as factories
+│   ├── bic.py         # Agente Arquiteto
+│   ├── mimi.py        # Agente Product Owner
+│   ├── givaldo.py     # Agente Tech Lead
+│   └── jaiminho.py    # Agente Desenvolvedor
+├── .env.example       # Template de variáveis de ambiente
+├── requirements.txt   # Dependências Python
+└── Dockerfile         # Imagem para execução containerizada
 ```
 
 ## Pré-requisitos
 
-1. **Ollama** rodando localmente com o modelo Llama 3.1:
-   ```bash
-   ollama pull llama3.1
-   ollama serve   # roda na porta 11434 por padrão
-   ```
+- Python 3.11+
+- Azure DevOps com Personal Access Token (PAT) com permissão de escrita em Work Items
+- Um provedor de LLM: **Ollama** (local), **Gemini**, ou **OpenAI**
 
-2. **Azure DevOps** com um Personal Access Token (PAT) que tenha permissão de **Work Items (Read & Write)**.
+## Configuração
 
-## Setup
+1. Clone o repositório:
 
 ```bash
-# 1. Clone e entre no diretório
-git clone <repo-url> && cd poc-agent
+git clone <url-do-repositório>
+cd poc-agent
+```
 
-# 2. Crie o ambiente virtual e instale dependências
+2. Crie o ambiente virtual e instale as dependências:
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# 3. Configure as variáveis de ambiente
-cp .env.example .env
-# Edite .env com seus dados do Azure DevOps
 ```
 
-## Uso
+3. Copie e preencha o arquivo de configuração:
 
 ```bash
-# Passar arquivo de especificação como argumento
-python workflow.py specs/exemplo_estorno.md
-
-# Ou via stdin
-cat specs/exemplo_estorno.md | python workflow.py
+cp .env.example .env
 ```
 
-## Usando com Docker
+4. Edite o `.env` com suas credenciais:
+
+```env
+# Azure DevOps (obrigatório)
+AZURE_ORG=sua-organizacao
+AZURE_PROJECT=seu-projeto
+AZURE_PAT=seu-personal-access-token
+
+# LLM — troque apenas esta linha para mudar de provider
+LLM_MODEL=ollama/llama3.1          # Ollama local (padrão)
+# LLM_MODEL=gemini/gemini-2.5-flash  # Google Gemini
+# LLM_MODEL=openai/gpt-4o           # OpenAI
+
+# Key do provider hospedado (descomente conforme necessário)
+# GEMINI_API_KEY=sua-chave
+# OPENAI_API_KEY=sua-chave
+```
+
+### Troca de Provider
+
+O provider é **auto-detectado** pelo prefixo do modelo:
+
+| Prefixo | Provider | Key obrigatória |
+|---------|----------|-----------------|
+| `ollama/` | Ollama local | Nenhuma |
+| `gemini/` | Google Gemini | `GEMINI_API_KEY` |
+| `openai/` | OpenAI | `OPENAI_API_KEY` |
+| `anthropic/` | Anthropic | `ANTHROPIC_API_KEY` |
+
+Basta alterar `LLM_MODEL` no `.env` — nenhuma mudança de código necessária.
+
+### Rate Limiting
+
+O rate limiter (janela deslizante de 60s) é ativado automaticamente para providers hospedados:
+
+| Provider | RPM padrão |
+|----------|-----------|
+| Ollama | 0 (sem limite) |
+| Gemini | 10 |
+| OpenAI | 30 |
+
+Para ajustar, defina `LLM_RPM` no `.env`.
+
+## Execução
+
+```bash
+# Passando a especificação como arquivo
+python workflow.py especificacao.md
+
+# Ou via stdin
+cat especificacao.md | python workflow.py
+```
+
+### Docker
 
 ```bash
 docker build -t poc-agent .
-docker run --env-file .env -v $(pwd)/specs:/app/specs poc-agent python workflow.py specs/exemplo_estorno.md
+docker run --env-file .env -v ./especificacao.md:/app/especificacao.md poc-agent python workflow.py especificacao.md
 ```
 
-> **Nota:** O container precisa acessar o Ollama. Se o Ollama roda na máquina host, use `--network host` ou configure `LLM_BASE_URL=http://host.docker.internal:11434/v1` no `.env`.
+> **Nota:** Se usar Ollama local com Docker, adicione `--network host` ou configure `OLLAMA_BASE_URL=http://host.docker.internal:11434` no `.env`.
 
-## O que foi corrigido em relação ao código original
+## Como Funciona
 
-### 1. Removida dependência desnecessária (`langchain-community`)
-O `requirements.txt` original incluía `langchain-community` que **não era importada em nenhum lugar**. O projeto usa apenas CrewAI — são frameworks diferentes. Removida para evitar confusão.
+### 1. Validação (`config.py`)
 
-### 2. Ativado `python-dotenv` (estava no requirements mas não era usado)
-A dependência `python-dotenv` estava instalada mas `load_dotenv()` nunca era chamado. Agora o `workflow.py` carrega o `.env` automaticamente na inicialização.
+Ao iniciar, `validate_config()` verifica se todas as variáveis obrigatórias estão definidas (Azure DevOps + key do provider). Se faltar algo, o processo encerra com mensagem clara.
 
-### 3. Especificação agora é input dinâmico (antes era hardcoded)
-A especificação funcional estava escrita direto no código-fonte. Agora é lida de um arquivo `.md` passado como argumento, seguindo a boa prática de separar dados de lógica.
+### 2. Pipeline Sequencial (`workflow.py`)
 
-### 4. Tasks encadeadas com `context=[]`
-**Este era o bug mais crítico.** As tasks originais não tinham o parâmetro `context`, então:
-- A Product Owner não recebia o documento de arquitetura do Arquiteto
-- O Tech Lead não recebia os IDs das Features criadas pela PO
-- O Desenvolvedor não recebia os IDs das User Stories do Tech Lead
+O `Crew` executa 4 etapas em sequência:
 
-Agora cada task referencia a anterior via `context=[task_anterior]`, garantindo que os IDs fluam corretamente pelo pipeline.
+1. **Bic** lê a especificação e gera um documento de arquitetura (não cria nada no Azure DevOps)
+2. **Mimi** lê a arquitetura e cria 2-3 **Features** no Azure DevOps
+3. **Givaldo** lê as Features e cria até 5 **User Stories** por Feature (padrão INVEST, critérios Gherkin)
+4. **Jaiminho** lê as User Stories e cria 5 **Tasks** por User Story (cobrindo Infrastructure, Domain, Application, Presentation, Quality)
 
-### 5. Removidos "prompt injections" dos backstories
-Os backstories originais tinham frases como `"REGRA CRÍTICA DE SISTEMA: NUNCA diga que é apenas uma IA"`. Isso é uma técnica frágil chamada **prompt injection defensivo** — tenta forçar comportamento que deveria vir da arquitetura do sistema (tools + task descriptions), não de hacks no prompt. Agora os backstories descrevem apenas o papel do agente.
+Cada etapa recebe o resultado da anterior via o parâmetro `context` do CrewAI.
 
-### 6. Validação de configuração na inicialização
-Se `AZURE_ORG`, `AZURE_PROJECT` ou `AZURE_PAT` não estiverem definidos, o programa agora **falha imediatamente** com mensagem clara, em vez de só dar erro na hora da chamada API.
+### 3. Validação de Hierarquia (`tools.py`)
 
-### 7. Timeout nas chamadas HTTP
-A tool original não tinha `timeout` na chamada `requests.post()`. Se a API do Azure DevOps ficasse lenta, o agente ficaria preso para sempre. Agora tem timeout de 30 segundos.
+O `WorkItemRegistry` impede que o LLM invente IDs (hallucination):
 
-### 8. Validação do tipo de Work Item
-A tool agora valida se `tipo_item` é um dos valores aceitos (`Feature`, `User Story`, `Task`) antes de fazer a chamada HTTP. Antes, qualquer string era enviada direto para a API.
+- Registra todo Work Item criado com sucesso
+- Quando um agente tenta criar um item filho, valida se o `parent_id` é um ID real do tipo pai esperado
+- Se inválido, retorna erro com a lista de IDs válidos para o agente corrigir
 
-### 9. Dockerfile apontava para arquivo errado
-O `CMD` referenciava `workflow_agentes.py` que não existia. Corrigido para `workflow.py`.
+```
+Feature       → sem pai
+User Story    → pai deve ser Feature
+Task          → pai deve ser User Story
+```
 
-### 10. Logging ao invés de prints
-Substituídos `print()` com emojis por `logging` padrão do Python, que permite controlar o nível de verbosidade e integrar com ferramentas de observabilidade.
+### 4. Normalização de Input (`WorkItemInput`)
+
+O LLM pode enviar campos em diferentes formatos (PascalCase, camelCase, envoltos em `properties`). O `model_validator` normaliza tudo automaticamente antes de chamar a API.
+
+## Capacidade do Pipeline
+
+| Agente | max_iter | Quantidade máxima de itens |
+|--------|----------|---------------------------|
+| Bic | 3 | 1 documento de arquitetura |
+| Mimi | 8 | 2-3 Features |
+| Givaldo | 25 | até 15 User Stories |
+| Jaiminho | 90 | até 75 Tasks |
+
+Total: até **126 chamadas ao LLM** por execução.
+
+## Configurações Avançadas
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `LLM_NUM_CTX` | 32768 | Tamanho do contexto (só Ollama) |
+| `LLM_RPM` | auto | Requests por minuto (override manual) |
+| `CREWAI_TRACING_ENABLED` | false | Envia traces para app.crewai.com (dados sensíveis!) |
+| `LOG_LEVEL` | INFO | Nível de log (`DEBUG` para ver payloads) |
+
+## Licença
+
+MIT

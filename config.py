@@ -21,7 +21,24 @@ logger = logging.getLogger("config")
 LLM_MODEL = os.getenv("LLM_MODEL", "ollama/llama3.1")
 
 # ── Detecção automática de provider pelo prefixo do modelo ──
-PROVIDER = LLM_MODEL.split("/")[0]  # "ollama", "gemini", "openai", etc.
+_KNOWN_PROVIDERS = {"ollama", "gemini", "openai", "anthropic"}
+
+def _detect_provider(model: str) -> str:
+    prefix = model.split("/")[0]
+    if prefix in _KNOWN_PROVIDERS:
+        return prefix
+    # Fallback: detecta pelo nome do modelo se o prefixo não for reconhecido
+    for provider in _KNOWN_PROVIDERS:
+        if provider in model.lower():
+            logger.warning(
+                "Prefixo '%s' não reconhecido. Detectado '%s' pelo nome do modelo. "
+                "Recomendado usar formato: %s/%s",
+                prefix, provider, provider, model,
+            )
+            return provider
+    return prefix
+
+PROVIDER = _detect_provider(LLM_MODEL)
 
 # ── Configurações específicas por provider ──
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -78,20 +95,40 @@ class _RateLimiter:
 
 _rate_limiter = _RateLimiter(LLM_RPM)
 
+# Retry config para erros transientes (503, 429, etc.)
+_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "5"))
+_RETRY_BASE_DELAY = 5  # segundos
+
 
 def _wrap_with_rate_limit(llm):
-    """Envolve o método call() do LLM com rate limiting."""
-    if LLM_RPM <= 0:
-        return llm
-
+    """Envolve o método call() do LLM com rate limiting e retry para erros transientes."""
     original_call = llm.call
 
     def _throttled_call(*args, **kwargs):
         _rate_limiter.wait_if_needed()
-        return original_call(*args, **kwargs)
+
+        last_exception = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                return original_call(*args, **kwargs)
+            except Exception as exc:
+                exc_str = str(exc)
+                is_transient = any(code in exc_str for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "high demand"))
+                if not is_transient or attempt == _MAX_RETRIES:
+                    raise
+                last_exception = exc
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))  # 5s, 10s, 20s, 40s
+                logger.warning(
+                    "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %ds... | %s",
+                    attempt, _MAX_RETRIES, delay, exc_str[:120],
+                )
+                time.sleep(delay)
+                _rate_limiter.wait_if_needed()
+
+        raise last_exception  # pragma: no cover
 
     llm.call = _throttled_call
-    logger.info("Rate limiting ativo: %d RPM", LLM_RPM)
+    logger.info("Rate limiting ativo: %d RPM | Retry: até %d tentativas", LLM_RPM, _MAX_RETRIES)
     return llm
 
 
