@@ -14,8 +14,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "ollama/llama3.1")
+OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash")
 LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "32768"))
 
 
@@ -30,11 +30,14 @@ def validate_config():
 
 
 def create_llm() -> LLM:
-    return LLM(
-        model=LLM_MODEL,
-        base_url=OLLAMA_BASE,
-        extra_body={"num_ctx": LLM_NUM_CTX},
-    )
+    kwargs: dict = {"model": LLM_MODEL}
+
+    # Ollama local precisa de base_url e num_ctx
+    if OLLAMA_BASE:
+        kwargs["base_url"] = OLLAMA_BASE
+        kwargs["extra_body"] = {"num_ctx": LLM_NUM_CTX}
+
+    return LLM(**kwargs)
 
 
 def load_specification(path: str | None) -> str:

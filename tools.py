@@ -10,6 +10,51 @@ logger = logging.getLogger(__name__)
 
 VALID_WORK_ITEM_TYPES = {"Feature", "User Story", "Task"}
 
+# Hierarquia válida: qual tipo de pai cada tipo aceita
+PARENT_TYPE_MAP = {
+    "Feature": None,          # Feature não tem pai
+    "User Story": "Feature",  # US só aceita Feature como pai
+    "Task": "User Story",     # Task só aceita US como pai
+}
+
+
+class WorkItemRegistry:
+    """Registro global de IDs criados — fonte de verdade para parent_id."""
+
+    def __init__(self):
+        self._items: dict[str, list[dict]] = {
+            "Feature": [],
+            "User Story": [],
+            "Task": [],
+        }
+
+    def register(self, tipo_item: str, item_id: int, titulo: str, parent_id: int | None = None):
+        self._items[tipo_item].append({
+            "id": item_id,
+            "titulo": titulo,
+            "parent_id": parent_id,
+        })
+
+    def get_ids(self, tipo_item: str) -> list[int]:
+        return [item["id"] for item in self._items[tipo_item]]
+
+    def get_items(self, tipo_item: str) -> list[dict]:
+        return self._items[tipo_item]
+
+    def id_exists(self, tipo_item: str, item_id: int) -> bool:
+        return item_id in self.get_ids(tipo_item)
+
+    def format_valid_ids(self, tipo_item: str) -> str:
+        items = self._items[tipo_item]
+        if not items:
+            return f"Nenhum {tipo_item} criado ainda."
+        lines = [f"  - ID={it['id']}: {it['titulo']}" for it in items]
+        return f"IDs válidos de {tipo_item}:\n" + "\n".join(lines)
+
+
+# Instância global — compartilhada entre todos os agentes
+registry = WorkItemRegistry()
+
 
 class WorkItemInput(BaseModel):
     titulo: str = Field(description="Título do Work Item.")
@@ -20,19 +65,13 @@ class WorkItemInput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_input(cls, data: Any) -> Any:
-        """Normaliza variações que LLMs locais produzem:
-        - {"properties": {...}} → desembrulha
-        - PascalCase/camelCase → snake_case
-        """
         if not isinstance(data, dict):
             return data
 
-        # Desembrulha wrapper "properties"
         if "properties" in data and "titulo" not in data:
             logger.warning("Detectado wrapper 'properties' — desembrulhando.")
             data = data["properties"]
 
-        # Mapeia variações de nomes de campo para snake_case
         key_map = {
             "titulo": "titulo", "Titulo": "titulo", "title": "titulo", "Title": "titulo",
             "descricao": "descricao", "Descricao": "descricao", "Descrição": "descricao",
@@ -70,6 +109,34 @@ class AzureDevOpsTool(BaseTool):
         if tipo_item not in VALID_WORK_ITEM_TYPES:
             return f"Erro: tipo_item '{tipo_item}' inválido. Use um de: {VALID_WORK_ITEM_TYPES}"
 
+        # ── Validação de hierarquia ──
+        expected_parent_type = PARENT_TYPE_MAP[tipo_item]
+
+        if expected_parent_type is None and parent_id is not None:
+            logger.warning("[TOOL] Feature não aceita parent_id. Ignorando parent_id=%s.", parent_id)
+            parent_id = None
+
+        if expected_parent_type is not None:
+            valid_ids = registry.get_ids(expected_parent_type)
+
+            if not valid_ids:
+                return (
+                    f"ERRO: Não é possível criar {tipo_item} — nenhum {expected_parent_type} foi criado ainda. "
+                    f"Crie primeiro os itens do tipo '{expected_parent_type}'."
+                )
+
+            if parent_id is None or parent_id not in valid_ids:
+                logger.warning(
+                    "[TOOL] parent_id=%s inválido para %s. IDs válidos de %s: %s",
+                    parent_id, tipo_item, expected_parent_type, valid_ids,
+                )
+                return (
+                    f"ERRO: parent_id={parent_id} não é um {expected_parent_type} válido.\n"
+                    f"{registry.format_valid_ids(expected_parent_type)}\n"
+                    f"Escolha um desses IDs e tente novamente."
+                )
+
+        # ── Criação do Work Item ──
         project_encoded = requests.utils.quote(project)
         url = f"https://dev.azure.com/{org}/{project_encoded}/_apis/wit/workitems/${tipo_item}?api-version=7.1"
 
@@ -91,8 +158,6 @@ class AzureDevOpsTool(BaseTool):
 
         parent_info = f" (parent_id={parent_id})" if parent_id else ""
         logger.info("[TOOL] Criando %s: '%s'%s", tipo_item, titulo, parent_info)
-        logger.debug("[TOOL] URL: %s", url)
-        logger.debug("[TOOL] Payload: %s", payload)
 
         response = requests.post(
             url,
@@ -104,12 +169,12 @@ class AzureDevOpsTool(BaseTool):
 
         if response.status_code in (200, 201):
             item_id = response.json().get("id")
-            logger.info("[TOOL] Criado com sucesso — ID: %s, Tipo: %s, Título: %s", item_id, tipo_item, titulo)
-            parent_msg = f", parent_id={parent_id}" if parent_id else ""
+            registry.register(tipo_item, item_id, titulo, parent_id)
+            logger.info("[TOOL] Criado — ID=%s, Tipo=%s, parent_id=%s", item_id, tipo_item, parent_id)
             return (
-                f"SUCESSO: {tipo_item} criado com ID={item_id}{parent_msg}.\n"
+                f"SUCESSO: {tipo_item} criado com ID={item_id} (parent_id={parent_id}).\n"
                 f"Título: {titulo}\n"
-                f">>> IMPORTANTE: Para criar itens filhos deste {tipo_item}, use parent_id={item_id} <<<"
+                f">>> Para criar itens filhos, use parent_id={item_id} <<<"
             )
 
         logger.error("[TOOL] Falha HTTP %s: %s", response.status_code, response.text[:500])
