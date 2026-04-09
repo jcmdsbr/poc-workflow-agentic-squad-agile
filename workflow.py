@@ -73,7 +73,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
             "3) NÃO inclua exemplos de código, snippets ou trechos de configuração. "
             "4) Foque em decisões arquiteturais e padrões recomendados."
         ),
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
         llm=llm,
         max_iter=3,
@@ -88,7 +88,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
             "e cria cada uma no Azure DevOps usando a ferramenta disponível. "
             "REGRA: crie no mínimo 2 e no máximo 3 Features."
         ),
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
         tools=[tool],
         llm=llm,
@@ -103,7 +103,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
             "User Stories técnicas, criando cada uma no Azure DevOps vinculada no máximo 5 User Stories por Feature. "
             "Cada User Story deve ser vinculada à Feature correspondente usando o parent_id."
         ),
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
         tools=[tool],
         llm=llm,
@@ -120,7 +120,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
             "integração e documentação/review. "
             "Cada Task deve ser vinculada à User Story correspondente usando parent_id."
         ),
-        verbose=True,
+        verbose=False,
         allow_delegation=False,
         tools=[tool],
         llm=llm,
@@ -243,7 +243,7 @@ def main():
         agents=list(agents),
         tasks=tasks,
         process=Process.sequential,
-        verbose=True,
+        verbose=False,
     )
 
     start = datetime.now(timezone.utc)
