@@ -2,20 +2,29 @@ import sys
 import os
 import logging
 from pathlib import Path
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process
+from crewai import LLM
 from tools import AzureDevOpsTool
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("workflow")
 
 # ==========================================
 # CONFIGURAÇÃO
 # ==========================================
 
-LLM_MODEL = os.getenv("LLM_MODEL", "openai/llama3.1")
-os.environ.setdefault("OPENAI_API_BASE", os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"))
-os.environ.setdefault("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "ollama-dummy-key"))
+OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "ollama/llama3.1")
+LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "32768"))
 
 
 def validate_config():
@@ -43,18 +52,31 @@ def load_specification(path: str | None) -> str:
 # AGENTES
 # ==========================================
 
-def create_agents(llm: str, tool: AzureDevOpsTool):
+def create_llm():
+    return LLM(
+        model=LLM_MODEL,
+        base_url=OLLAMA_BASE,
+        num_ctx=LLM_NUM_CTX,
+    )
+
+
+def create_agents(llm: LLM, tool: AzureDevOpsTool):
     architect = Agent(
         role="Arquiteto de Software",
-        goal="Analisar a especificação funcional e produzir um documento de arquitetura técnica.",
+        goal="Analisar a especificação funcional e produzir um documento de arquitetura técnica conciso e prescritivo, sem exemplos de código.",
         backstory=(
-            "Você é um arquiteto de sistemas experiente especializado em .NET. "
-            "Segue padrões como CQRS, FastEndpoints, Polly para resiliência, "
-            "OpenTelemetry para observabilidade e Kubernetes para infraestrutura."
+            "Você é um arquiteto de sistemas pragmático especializado em .NET. "
+            "Você orienta boas práticas como CQRS, FastEndpoints, Polly, OpenTelemetry e Kubernetes. "
+            "REGRAS: "
+            "1) Seja direto — máximo 400 palavras. "
+            "2) Liste componentes, responsabilidades e tecnologias em bullet points. "
+            "3) NÃO inclua exemplos de código, snippets ou trechos de configuração. "
+            "4) Foque em decisões arquiteturais e padrões recomendados."
         ),
         verbose=True,
         allow_delegation=False,
         llm=llm,
+        max_iter=3,
     )
 
     po = Agent(
@@ -69,6 +91,7 @@ def create_agents(llm: str, tool: AzureDevOpsTool):
         allow_delegation=False,
         tools=[tool],
         llm=llm,
+        max_iter=5,
     )
 
     tech_lead = Agent(
@@ -83,6 +106,7 @@ def create_agents(llm: str, tool: AzureDevOpsTool):
         allow_delegation=False,
         tools=[tool],
         llm=llm,
+        max_iter=10,
     )
 
     developer = Agent(
@@ -97,6 +121,7 @@ def create_agents(llm: str, tool: AzureDevOpsTool):
         allow_delegation=False,
         tools=[tool],
         llm=llm,
+        max_iter=15,
     )
 
     return architect, po, tech_lead, developer
@@ -111,11 +136,19 @@ def create_tasks(agents, specification: str):
 
     architecture_task = Task(
         description=(
-            "Analise a especificação funcional abaixo e gere um documento de arquitetura "
-            "técnica em Markdown descrevendo componentes, integrações e tecnologias.\n\n"
+            "Analise a especificação funcional abaixo e gere um documento de arquitetura técnica "
+            "CONCISO em Markdown seguindo estas regras:\n"
+            "- Máximo 400 palavras\n"
+            "- Liste componentes, responsabilidades e tecnologias em bullet points\n"
+            "- Indique padrões e boas práticas recomendadas (CQRS, Polly, OpenTelemetry, etc)\n"
+            "- NÃO inclua exemplos de código, snippets ou trechos de configuração\n"
+            "- Foque em decisões arquiteturais e justificativas\n\n"
             f"ESPECIFICAÇÃO:\n{specification}"
         ),
-        expected_output="Documento Markdown com a arquitetura técnica completa.",
+        expected_output=(
+            "Documento Markdown conciso (máximo 400 palavras) com bullet points: "
+            "componentes, tecnologias, padrões recomendados e responsabilidades. Sem código."
+        ),
         agent=architect,
     )
 
@@ -176,9 +209,25 @@ def main():
     spec_path = sys.argv[1] if len(sys.argv) > 1 else None
     specification = load_specification(spec_path)
 
+    logger.info("=" * 60)
+    logger.info("PIPELINE DE AGENTES — INÍCIO")
+    logger.info("=" * 60)
+    logger.info("Modelo LLM: %s (ctx=%d)", LLM_MODEL, LLM_NUM_CTX)
+    logger.info("Ollama: %s", OLLAMA_BASE)
+    logger.info("Especificação: %s (%d caracteres)", spec_path or "stdin", len(specification))
+    logger.info("Azure DevOps: org=%s, project=%s", os.getenv("AZURE_ORG"), os.getenv("AZURE_PROJECT"))
+    logger.info("-" * 60)
+
+    llm = create_llm()
     tool = AzureDevOpsTool()
-    agents = create_agents(LLM_MODEL, tool)
+    agents = create_agents(llm, tool)
     tasks = create_tasks(agents, specification)
+
+    agent_names = [a.role for a in agents]
+    for i, (task, name) in enumerate(zip(tasks, agent_names), 1):
+        logger.info("Etapa %d: [%s] → %s", i, name, task.expected_output)
+
+    logger.info("-" * 60)
 
     crew = Crew(
         agents=list(agents),
@@ -187,9 +236,13 @@ def main():
         verbose=True,
     )
 
-    print("Iniciando pipeline de agentes...")
+    start = datetime.now(timezone.utc)
     result = crew.kickoff()
-    print("\nPipeline concluído!")
+    elapsed = datetime.now(timezone.utc) - start
+
+    logger.info("=" * 60)
+    logger.info("PIPELINE CONCLUÍDO em %s", str(elapsed).split(".")[0])
+    logger.info("=" * 60)
     print(result)
 
 
