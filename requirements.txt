@@ -1,0 +1,4 @@
+crewai==0.28.8
+langchain-community==0.0.29
+requests==2.31.0
+python-dotenv==1.0.1
