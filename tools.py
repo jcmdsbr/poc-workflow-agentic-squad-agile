@@ -19,13 +19,37 @@ class WorkItemInput(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def unwrap_properties(cls, data: Any) -> Any:
-        """LLMs locais (ex: Llama) às vezes envolvem args em {"properties": {...}}.
-        Detecta e desembrulha automaticamente."""
-        if isinstance(data, dict) and "properties" in data and "titulo" not in data:
-            logger.warning("Detectado wrapper 'properties' nos argumentos — desembrulhando automaticamente.")
-            return data["properties"]
-        return data
+    def normalize_input(cls, data: Any) -> Any:
+        """Normaliza variações que LLMs locais produzem:
+        - {"properties": {...}} → desembrulha
+        - PascalCase/camelCase → snake_case
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Desembrulha wrapper "properties"
+        if "properties" in data and "titulo" not in data:
+            logger.warning("Detectado wrapper 'properties' — desembrulhando.")
+            data = data["properties"]
+
+        # Mapeia variações de nomes de campo para snake_case
+        key_map = {
+            "titulo": "titulo", "Titulo": "titulo", "title": "titulo", "Title": "titulo",
+            "descricao": "descricao", "Descricao": "descricao", "Descrição": "descricao",
+            "description": "descricao", "Description": "descricao",
+            "tipo_item": "tipo_item", "TipoItem": "tipo_item", "tipoItem": "tipo_item",
+            "tipo": "tipo_item", "Tipo": "tipo_item", "type": "tipo_item", "Type": "tipo_item",
+            "parent_id": "parent_id", "ParentId": "parent_id", "parentId": "parent_id",
+            "parent": "parent_id", "Parent": "parent_id",
+        }
+        normalized = {}
+        for key, value in data.items():
+            mapped = key_map.get(key)
+            if mapped:
+                normalized[mapped] = value
+            else:
+                logger.warning("Campo desconhecido ignorado: '%s'", key)
+        return normalized
 
 
 class AzureDevOpsTool(BaseTool):

@@ -56,7 +56,7 @@ def create_llm():
     return LLM(
         model=LLM_MODEL,
         base_url=OLLAMA_BASE,
-        num_ctx=LLM_NUM_CTX,
+        extra_body={"num_ctx": LLM_NUM_CTX},
     )
 
 
@@ -92,7 +92,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
         allow_delegation=False,
         tools=[tool],
         llm=llm,
-        max_iter=5,
+        max_iter=8,
     )
 
     tech_lead = Agent(
@@ -100,22 +100,23 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
         goal="Fatiar Features em User Stories no Azure DevOps.",
         backstory=(
             "Você é um Tech Lead .NET. Você recebe Features e as decompõe em "
-            "User Stories técnicas, criando cada uma no Azure DevOps vinculada "
-            "à Feature correspondente usando o parent_id."
+            "User Stories técnicas, criando cada uma no Azure DevOps vinculada no máximo 5 User Stories por Feature. "
+            "Cada User Story deve ser vinculada à Feature correspondente usando o parent_id."
         ),
         verbose=True,
         allow_delegation=False,
         tools=[tool],
         llm=llm,
-        max_iter=10,
+        max_iter=25,
     )
 
     developer = Agent(
         role="Desenvolvedor Sênior",
         goal="Criar exatamente 5 Tasks básicas de desenvolvimento para cada User Story no Azure DevOps.",
         backstory=(
-            "Você é um desenvolvedor .NET sênior. Para cada User Story, você cria exatamente 5 Tasks "
-            "focadas no básico do desenvolvimento: implementação, testes unitários, configuração, "
+            "Você é um desenvolvedor .NET sênior. Para cada User Story, você cria exatamente 5 Tasks, "
+            "cada uma deve ser criada no Azure DevOps e vinculada à User Story correspondente usando parent_id. "
+            "focadas no básico do desenvolvimento: implementação, testes unidade, configuração, "
             "integração e documentação/review. "
             "Cada Task deve ser vinculada à User Story correspondente usando parent_id."
         ),
@@ -123,7 +124,7 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
         allow_delegation=False,
         tools=[tool],
         llm=llm,
-        max_iter=15,
+        max_iter=90,
     )
 
     return architect, po, tech_lead, developer
