@@ -62,10 +62,10 @@ def create_llm():
 
 def create_agents(llm: LLM, tool: AzureDevOpsTool):
     architect = Agent(
-        role="Arquiteto de Software",
+        role="Bic — Arquiteto de Software",
         goal="Analisar a especificação funcional e produzir um documento de arquitetura técnica conciso e prescritivo, sem exemplos de código.",
         backstory=(
-            "Você é um arquiteto de sistemas pragmático especializado em .NET. "
+            "Você é o Bic, um arquiteto de sistemas pragmático especializado em .NET. "
             "Você orienta boas práticas como CQRS, FastEndpoints, Polly, OpenTelemetry e Kubernetes. "
             "REGRAS: "
             "1) Seja direto — máximo 400 palavras. "
@@ -80,10 +80,10 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
     )
 
     po = Agent(
-        role="Product Owner",
+        role="Mimi — Product Owner",
         goal="Agrupar a especificação em 2 a 3 grandes Features e criá-las no Azure DevOps.",
         backstory=(
-            "Você é uma Product Owner técnica. A partir da documentação de arquitetura, "
+            "Você é a Mimi, uma Product Owner técnica. A partir da documentação de arquitetura, "
             "você agrupa os requisitos em 2 a 3 Features de alto nível (grandes blocos funcionais) "
             "e cria cada uma no Azure DevOps usando a ferramenta disponível. "
             "REGRA: crie no mínimo 2 e no máximo 3 Features."
@@ -96,10 +96,10 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
     )
 
     tech_lead = Agent(
-        role="Tech Lead",
+        role="Givaldo — Tech Lead",
         goal="Fatiar Features em User Stories no Azure DevOps.",
         backstory=(
-            "Você é um Tech Lead .NET. Você recebe Features e as decompõe em "
+            "Você é o Givaldo, um Tech Lead .NET. Você recebe Features e as decompõe em "
             "User Stories técnicas, criando cada uma no Azure DevOps vinculada no máximo 5 User Stories por Feature. "
             "Cada User Story deve ser vinculada à Feature correspondente usando o parent_id."
         ),
@@ -111,10 +111,10 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
     )
 
     developer = Agent(
-        role="Desenvolvedor Sênior",
+        role="Jaiminho — Desenvolvedor Sênior",
         goal="Criar exatamente 5 Tasks básicas de desenvolvimento para cada User Story no Azure DevOps.",
         backstory=(
-            "Você é um desenvolvedor .NET sênior. Para cada User Story, você cria exatamente 5 Tasks, "
+            "Você é o Jaiminho, um desenvolvedor .NET sênior. Para cada User Story, você cria exatamente 5 Tasks, "
             "cada uma deve ser criada no Azure DevOps e vinculada à User Story correspondente usando parent_id. "
             "focadas no básico do desenvolvimento: implementação, testes unidade, configuração, "
             "integração e documentação/review. "
