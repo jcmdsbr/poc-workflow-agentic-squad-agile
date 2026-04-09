@@ -81,11 +81,12 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
 
     po = Agent(
         role="Product Owner",
-        goal="Criar Features no Azure DevOps com base na arquitetura técnica.",
+        goal="Agrupar a especificação em 2 a 3 grandes Features e criá-las no Azure DevOps.",
         backstory=(
             "Você é uma Product Owner técnica. A partir da documentação de arquitetura, "
-            "você identifica de 1 a 5 Features de alto nível e cria cada uma no Azure DevOps "
-            "usando a ferramenta disponível."
+            "você agrupa os requisitos em 2 a 3 Features de alto nível (grandes blocos funcionais) "
+            "e cria cada uma no Azure DevOps usando a ferramenta disponível. "
+            "REGRA: crie no mínimo 2 e no máximo 3 Features."
         ),
         verbose=True,
         allow_delegation=False,
@@ -111,11 +112,12 @@ def create_agents(llm: LLM, tool: AzureDevOpsTool):
 
     developer = Agent(
         role="Desenvolvedor Sênior",
-        goal="Criar Tasks técnicas detalhadas a partir das User Stories no Azure DevOps.",
+        goal="Criar exatamente 5 Tasks básicas de desenvolvimento para cada User Story no Azure DevOps.",
         backstory=(
-            "Você é um desenvolvedor .NET sênior. Você decompõe User Stories em "
-            "Tasks de implementação com detalhes técnicos (endpoints, configs, testes), "
-            "criando cada Task no Azure DevOps vinculada à User Story correspondente."
+            "Você é um desenvolvedor .NET sênior. Para cada User Story, você cria exatamente 5 Tasks "
+            "focadas no básico do desenvolvimento: implementação, testes unitários, configuração, "
+            "integração e documentação/review. "
+            "Cada Task deve ser vinculada à User Story correspondente usando parent_id."
         ),
         verbose=True,
         allow_delegation=False,
@@ -154,14 +156,15 @@ def create_tasks(agents, specification: str):
 
     features_task = Task(
         description=(
-            "Com base na arquitetura técnica recebida, identifique e crie Features no Azure DevOps.\n"
+            "Com base na arquitetura técnica recebida, agrupe os requisitos em 2 a 3 grandes Features.\n"
+            "REGRA: crie no MÍNIMO 2 e no MÁXIMO 3 Features.\n"
             "Para cada Feature, use a ferramenta 'criar_work_item_azure' com:\n"
             "- titulo: nome descritivo da feature\n"
             "- descricao: descrição de negócio\n"
             "- tipo_item: 'Feature'\n\n"
             "Retorne a lista de Features criadas com seus IDs."
         ),
-        expected_output="Lista com título e ID de cada Feature criada.",
+        expected_output="Lista com título e ID de cada Feature criada (2 a 3 Features).",
         agent=po,
         context=[architecture_task],
     )
@@ -183,15 +186,21 @@ def create_tasks(agents, specification: str):
 
     tasks_task = Task(
         description=(
-            "Decomponha cada User Story em Tasks de implementação no Azure DevOps.\n"
+            "Para CADA User Story, crie exatamente 5 Tasks básicas de desenvolvimento no Azure DevOps.\n"
+            "As 5 Tasks por User Story devem cobrir:\n"
+            "1. Implementação principal (endpoint, serviço ou job)\n"
+            "2. Testes unitários\n"
+            "3. Configuração (appsettings, variáveis, infra)\n"
+            "4. Integração (mensageria, APIs externas, banco)\n"
+            "5. Code review e documentação\n\n"
             "Para cada Task, use a ferramenta 'criar_work_item_azure' com:\n"
             "- titulo: nome técnico da tarefa\n"
-            "- descricao: detalhes de implementação (endpoints, configs, testes)\n"
+            "- descricao: detalhes de implementação\n"
             "- tipo_item: 'Task'\n"
             "- parent_id: ID da User Story correspondente\n\n"
             "Retorne a lista completa de Tasks com seus IDs e parent_ids."
         ),
-        expected_output="Lista com título, ID e parent_id de cada Task criada.",
+        expected_output="Lista com título, ID e parent_id de cada Task criada (5 por User Story).",
         agent=developer,
         context=[stories_task],
     )
