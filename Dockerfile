@@ -3,5 +3,4 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-# Comando para iniciar o workflow
-CMD ["python", "workflow_agentes.py"]
+CMD ["python", "workflow.py"]

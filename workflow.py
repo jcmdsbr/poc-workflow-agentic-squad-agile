@@ -1,144 +1,197 @@
+import sys
 import os
+import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process
-from tools import FerramentaAzureDevOps
+from tools import AzureDevOpsTool
 
-# 1. Configuração Nativa do CrewAI apontando para o Ollama local com Llama 3.1
-os.environ["OPENAI_API_BASE"] = "http://localhost:11434/v1"
-os.environ["OPENAI_API_KEY"] = "ollama-dummy-key" 
-modelo_string = "openai/llama3.1"
-
-ferramenta_azure = FerramentaAzureDevOps()
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 
 # ==========================================
-# 2. DEFINIÇÃO DOS AGENTES BLINDADOS
+# CONFIGURAÇÃO
 # ==========================================
 
-alan_arquiteto = Agent(
-    role='Arquiteto de Software .NET Senior',
-    goal='Desenhar arquiteturas distribuídas e resilientes com base na especificação funcional.',
-    backstory='''Você é Alan, um arquiteto de sistemas pragmático.
-    Regras estritas: 
-    1. Padrão CQRS e FastEndpoints para APIs.
-    2. Uso de Polly para resiliência.
-    3. OpenTelemetry para observabilidade.
-    4. Kubernetes para infra (LoadBalancer para APIs, CronJobs nativos, Google Pub/Sub para mensageria).''',
-    verbose=True,
-    allow_delegation=False,
-    llm=modelo_string
-)
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/llama3.1")
+os.environ.setdefault("OPENAI_API_BASE", os.getenv("LLM_BASE_URL", "http://localhost:11434/v1"))
+os.environ.setdefault("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "ollama-dummy-key"))
 
-paula_po = Agent(
-    role='Product Owner Técnica',
-    goal='Analisar a arquitetura e criar Features no Azure DevOps.',
-    backstory='''Você é Paula. Você lê a especificação técnica e cria de 1 a 5 Features.
-    
-    REGRA CRÍTICA DE SISTEMA: Você TEM acesso ao Azure DevOps. NUNCA diga que é apenas uma IA.
-    Você DEVE OBRIGATORIAMENTE invocar a ferramenta 'criar_work_item_azure'.
-    O JSON dos argumentos deve ser PLANO. NUNCA envolva os dados em uma chave "properties".''',
-    verbose=True,
-    max_iter=5,
-    allow_delegation=False,
-    tools=[ferramenta_azure],
-    llm=modelo_string
-)
 
-linus_tech_lead = Agent(
-    role='Tech Lead .NET e Scrum Master',
-    goal='Fatiar Features em User Stories no Azure DevOps.',
-    backstory='''Você é Linus. Você quebra as Features de negócio em User Stories técnicas.
-    
-    REGRA CRÍTICA DE SISTEMA: Você TEM acesso ao Azure DevOps. NUNCA diga que é apenas uma IA.
-    Você DEVE OBRIGATORIAMENTE invocar a ferramenta 'criar_work_item_azure'.
-    Lembre-se de passar o 'parent_id' correto. O JSON dos argumentos deve ser PLANO. NUNCA envolva os dados em uma chave "properties".''',
-    verbose=True,
-    max_iter=10,
-    allow_delegation=False,
-    tools=[ferramenta_azure],
-    llm=modelo_string
-)
+def validate_config():
+    required = ["AZURE_ORG", "AZURE_PROJECT", "AZURE_PAT"]
+    missing = [v for v in required if not os.getenv(v)]
+    if missing:
+        sys.exit(
+            f"Variáveis de ambiente obrigatórias não definidas: {', '.join(missing)}\n"
+            f"Copie .env.example para .env e preencha os valores."
+        )
 
-dennis_dev = Agent(
-    role='Desenvolvedor .NET Sênior',
-    goal='Quebrar User Stories em Tasks técnicas detalhadas no Azure DevOps.',
-    backstory='''Você é Dennis. Você pega a User Story e cria de 2 a 10 Tasks técnicas no nível de código (FastEndpoints, Polly, K8s).
-    
-    REGRA CRÍTICA DE SISTEMA: Você TEM acesso ao Azure DevOps. NUNCA diga que é apenas uma IA.
-    Você DEVE OBRIGATORIAMENTE invocar a ferramenta 'criar_work_item_azure'.
-    O JSON dos argumentos deve ser PLANO. NUNCA envolva os dados em uma chave "properties".''',
-    verbose=True,
-    max_iter=15,
-    allow_delegation=False,
-    tools=[ferramenta_azure],
-    llm=modelo_string
-)
+
+def load_specification(path: str | None) -> str:
+    if path:
+        return Path(path).read_text(encoding="utf-8")
+    if not sys.stdin.isatty():
+        return sys.stdin.read()
+    sys.exit(
+        "Uso: python workflow.py <arquivo_especificacao.md>\n"
+        " ou: cat spec.md | python workflow.py"
+    )
+
 
 # ==========================================
-# 3. DEFINIÇÃO DAS TAREFAS
+# AGENTES
 # ==========================================
 
-especificacao_input = """
-Especificação Funcional: Processamento de Estorno de Pagamentos.
-Todos os dias, à meia-noite, o sistema deve buscar no banco de dados pedidos cancelados.
-Para cada pedido, o sistema deve colocar uma mensagem em uma fila para o microsserviço financeiro processar o estorno no gateway de pagamento.
-O microsserviço financeiro deve consumir essa fila, processar e atualizar o status via uma API de callback nossa.
-"""
+def create_agents(llm: str, tool: AzureDevOpsTool):
+    architect = Agent(
+        role="Arquiteto de Software",
+        goal="Analisar a especificação funcional e produzir um documento de arquitetura técnica.",
+        backstory=(
+            "Você é um arquiteto de sistemas experiente especializado em .NET. "
+            "Segue padrões como CQRS, FastEndpoints, Polly para resiliência, "
+            "OpenTelemetry para observabilidade e Kubernetes para infraestrutura."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        llm=llm,
+    )
 
-tarefa_arquitetura = Task(
-    description=f'Gere a documentação técnica (Markdown) com a arquitetura baseada nesta especificação: {especificacao_input}',
-    expected_output='Documento Markdown com a arquitetura completa.',
-    agent=alan_arquiteto
-)
+    po = Agent(
+        role="Product Owner",
+        goal="Criar Features no Azure DevOps com base na arquitetura técnica.",
+        backstory=(
+            "Você é uma Product Owner técnica. A partir da documentação de arquitetura, "
+            "você identifica de 1 a 5 Features de alto nível e cria cada uma no Azure DevOps "
+            "usando a ferramenta disponível."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        tools=[tool],
+        llm=llm,
+    )
 
-tarefa_po = Task(
-    description='''Crie a(s) Feature(s) do projeto.
-    Para cada Feature, chame a ferramenta 'criar_work_item_azure' com:
-    - titulo
-    - descricao
-    - tipo_item: "Feature"
-    ''',
-    expected_output='Lista com os Títulos e IDs das Features criadas.',
-    agent=paula_po
-)
+    tech_lead = Agent(
+        role="Tech Lead",
+        goal="Fatiar Features em User Stories no Azure DevOps.",
+        backstory=(
+            "Você é um Tech Lead .NET. Você recebe Features e as decompõe em "
+            "User Stories técnicas, criando cada uma no Azure DevOps vinculada "
+            "à Feature correspondente usando o parent_id."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        tools=[tool],
+        llm=llm,
+    )
 
-tarefa_tech_lead = Task(
-    description='''Leia as Features geradas e crie User Stories.
-    Para cada User Story, chame a ferramenta 'criar_work_item_azure' com:
-    - titulo
-    - descricao
-    - tipo_item: "User Story"
-    - parent_id: (ID da Feature correspondente)
-    ''',
-    expected_output='Lista com os Títulos e IDs das User Stories criadas.',
-    agent=linus_tech_lead
-)
+    developer = Agent(
+        role="Desenvolvedor Sênior",
+        goal="Criar Tasks técnicas detalhadas a partir das User Stories no Azure DevOps.",
+        backstory=(
+            "Você é um desenvolvedor .NET sênior. Você decompõe User Stories em "
+            "Tasks de implementação com detalhes técnicos (endpoints, configs, testes), "
+            "criando cada Task no Azure DevOps vinculada à User Story correspondente."
+        ),
+        verbose=True,
+        allow_delegation=False,
+        tools=[tool],
+        llm=llm,
+    )
 
-tarefa_dev = Task(
-    description='''Leia as User Stories geradas e crie as Tasks de código.
-    Para cada Task, chame a ferramenta 'criar_work_item_azure' com:
-    - titulo
-    - descricao (detalhes técnicos de FastEndpoints, Polly, K8s, etc)
-    - tipo_item: "Task"
-    - parent_id: (ID da User Story correspondente)
-    ''',
-    expected_output='Lista com todos os IDs das Tasks técnicas criadas.',
-    agent=dennis_dev
-)
+    return architect, po, tech_lead, developer
+
 
 # ==========================================
-# 4. ORQUESTRAÇÃO
+# TAREFAS (com encadeamento via context)
 # ==========================================
 
-equipe_dev = Crew(
-    agents=[alan_arquiteto, paula_po, linus_tech_lead, dennis_dev],
-    tasks=[tarefa_arquitetura, tarefa_po, tarefa_tech_lead, tarefa_dev],
-    process=Process.sequential
-)
+def create_tasks(agents, specification: str):
+    architect, po, tech_lead, developer = agents
 
-print("🚀 Iniciando o Pipeline de Agentes Locais (.NET Enterprise Edition com Llama 3.1)...")
-try:
-    resultado_final = equipe_dev.kickoff()
-    print("\n\n✅ FLUXO CONCLUÍDO COM SUCESSO!")
-    print("========================================")
-    print(resultado_final)
-except Exception as e:
-    print(f"\n❌ ERRO NA EXECUÇÃO DO WORKFLOW: {str(e)}")
+    architecture_task = Task(
+        description=(
+            "Analise a especificação funcional abaixo e gere um documento de arquitetura "
+            "técnica em Markdown descrevendo componentes, integrações e tecnologias.\n\n"
+            f"ESPECIFICAÇÃO:\n{specification}"
+        ),
+        expected_output="Documento Markdown com a arquitetura técnica completa.",
+        agent=architect,
+    )
+
+    features_task = Task(
+        description=(
+            "Com base na arquitetura técnica recebida, identifique e crie Features no Azure DevOps.\n"
+            "Para cada Feature, use a ferramenta 'criar_work_item_azure' com:\n"
+            "- titulo: nome descritivo da feature\n"
+            "- descricao: descrição de negócio\n"
+            "- tipo_item: 'Feature'\n\n"
+            "Retorne a lista de Features criadas com seus IDs."
+        ),
+        expected_output="Lista com título e ID de cada Feature criada.",
+        agent=po,
+        context=[architecture_task],
+    )
+
+    stories_task = Task(
+        description=(
+            "Decomponha cada Feature em User Stories técnicas no Azure DevOps.\n"
+            "Para cada User Story, use a ferramenta 'criar_work_item_azure' com:\n"
+            "- titulo: nome descritivo\n"
+            "- descricao: critérios de aceite e detalhes técnicos\n"
+            "- tipo_item: 'User Story'\n"
+            "- parent_id: ID da Feature correspondente\n\n"
+            "Retorne a lista de User Stories com seus IDs e parent_ids."
+        ),
+        expected_output="Lista com título, ID e parent_id de cada User Story criada.",
+        agent=tech_lead,
+        context=[features_task],
+    )
+
+    tasks_task = Task(
+        description=(
+            "Decomponha cada User Story em Tasks de implementação no Azure DevOps.\n"
+            "Para cada Task, use a ferramenta 'criar_work_item_azure' com:\n"
+            "- titulo: nome técnico da tarefa\n"
+            "- descricao: detalhes de implementação (endpoints, configs, testes)\n"
+            "- tipo_item: 'Task'\n"
+            "- parent_id: ID da User Story correspondente\n\n"
+            "Retorne a lista completa de Tasks com seus IDs e parent_ids."
+        ),
+        expected_output="Lista com título, ID e parent_id de cada Task criada.",
+        agent=developer,
+        context=[stories_task],
+    )
+
+    return [architecture_task, features_task, stories_task, tasks_task]
+
+
+# ==========================================
+# EXECUÇÃO
+# ==========================================
+
+def main():
+    validate_config()
+
+    spec_path = sys.argv[1] if len(sys.argv) > 1 else None
+    specification = load_specification(spec_path)
+
+    tool = AzureDevOpsTool()
+    agents = create_agents(LLM_MODEL, tool)
+    tasks = create_tasks(agents, specification)
+
+    crew = Crew(
+        agents=list(agents),
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
+    )
+
+    print("Iniciando pipeline de agentes...")
+    result = crew.kickoff()
+    print("\nPipeline concluído!")
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
