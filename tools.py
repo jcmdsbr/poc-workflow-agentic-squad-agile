@@ -105,7 +105,12 @@ class AzureDevOpsTool(BaseTool):
         if response.status_code in (200, 201):
             item_id = response.json().get("id")
             logger.info("[TOOL] Criado com sucesso — ID: %s, Tipo: %s, Título: %s", item_id, tipo_item, titulo)
-            return f"Work Item criado. ID: {item_id}, Tipo: {tipo_item}, Título: {titulo}"
+            parent_msg = f", parent_id={parent_id}" if parent_id else ""
+            return (
+                f"SUCESSO: {tipo_item} criado com ID={item_id}{parent_msg}.\n"
+                f"Título: {titulo}\n"
+                f">>> IMPORTANTE: Para criar itens filhos deste {tipo_item}, use parent_id={item_id} <<<"
+            )
 
         logger.error("[TOOL] Falha HTTP %s: %s", response.status_code, response.text[:500])
         return f"Erro ao criar Work Item (HTTP {response.status_code}): {response.text[:300]}"

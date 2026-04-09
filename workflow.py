@@ -163,45 +163,64 @@ def create_tasks(agents, specification: str):
             "- titulo: nome descritivo da feature\n"
             "- descricao: descrição de negócio\n"
             "- tipo_item: 'Feature'\n\n"
-            "Retorne a lista de Features criadas com seus IDs."
+            "APÓS CRIAR, anote o ID retornado pela ferramenta. "
+            "Retorne a lista EXATA de Features criadas no formato:\n"
+            "Feature 1: Título=<titulo>, ID=<id retornado>\n"
+            "Feature 2: Título=<titulo>, ID=<id retornado>\n"
         ),
-        expected_output="Lista com título e ID de cada Feature criada (2 a 3 Features).",
+        expected_output=(
+            "Lista EXATA de Features criadas, cada uma com Título e ID REAL retornado pela ferramenta. "
+            "Formato: 'Feature N: Título=..., ID=...'. Apenas IDs que a ferramenta retornou."
+        ),
         agent=po,
         context=[architecture_task],
     )
 
     stories_task = Task(
         description=(
-            "Decomponha cada Feature em User Stories técnicas no Azure DevOps.\n"
-            "Para cada User Story, use a ferramenta 'criar_work_item_azure' com:\n"
+            "Você recebeu uma lista de Features já criadas no Azure DevOps com seus IDs REAIS.\n"
+            "ATENÇÃO CRÍTICA: O parent_id de cada User Story DEVE ser o ID EXATO da Feature correspondente "
+            "conforme listado no contexto recebido. NÃO invente IDs.\n\n"
+            "Para cada Feature, crie no máximo 5 User Stories usando 'criar_work_item_azure' com:\n"
             "- titulo: nome descritivo\n"
             "- descricao: critérios de aceite e detalhes técnicos\n"
             "- tipo_item: 'User Story'\n"
-            "- parent_id: ID da Feature correspondente\n\n"
-            "Retorne a lista de User Stories com seus IDs e parent_ids."
+            "- parent_id: ID EXATO da Feature (copiado do contexto)\n\n"
+            "APÓS CRIAR, anote o ID retornado pela ferramenta. "
+            "Retorne a lista EXATA no formato:\n"
+            "US 1: Título=<titulo>, ID=<id retornado>, parent_id=<id da Feature>\n"
         ),
-        expected_output="Lista com título, ID e parent_id de cada User Story criada.",
+        expected_output=(
+            "Lista EXATA de User Stories criadas. Cada uma com Título, ID REAL retornado pela ferramenta, "
+            "e parent_id REAL da Feature. Formato: 'US N: Título=..., ID=..., parent_id=...'"
+        ),
         agent=tech_lead,
         context=[features_task],
     )
 
     tasks_task = Task(
         description=(
-            "Para CADA User Story, crie exatamente 5 Tasks básicas de desenvolvimento no Azure DevOps.\n"
-            "As 5 Tasks por User Story devem cobrir:\n"
-            "1. Implementação principal (endpoint, serviço ou job)\n"
+            "Você recebeu uma lista de User Stories já criadas no Azure DevOps com seus IDs REAIS.\n"
+            "ATENÇÃO CRÍTICA: O parent_id de cada Task DEVE ser o ID EXATO da User Story correspondente "
+            "conforme listado no contexto recebido. NÃO invente IDs.\n\n"
+            "Para CADA User Story, crie exatamente 5 Tasks usando 'criar_work_item_azure' com:\n"
+            "1. Implementação principal\n"
             "2. Testes unitários\n"
             "3. Configuração (appsettings, variáveis, infra)\n"
             "4. Integração (mensageria, APIs externas, banco)\n"
             "5. Code review e documentação\n\n"
-            "Para cada Task, use a ferramenta 'criar_work_item_azure' com:\n"
+            "Parâmetros da ferramenta:\n"
             "- titulo: nome técnico da tarefa\n"
             "- descricao: detalhes de implementação\n"
             "- tipo_item: 'Task'\n"
-            "- parent_id: ID da User Story correspondente\n\n"
-            "Retorne a lista completa de Tasks com seus IDs e parent_ids."
+            "- parent_id: ID EXATO da User Story (copiado do contexto)\n\n"
+            "Retorne a lista EXATA no formato:\n"
+            "Task 1: Título=<titulo>, ID=<id retornado>, parent_id=<id da US>\n"
         ),
-        expected_output="Lista com título, ID e parent_id de cada Task criada (5 por User Story).",
+        expected_output=(
+            "Lista EXATA de Tasks criadas (5 por User Story). Cada uma com Título, ID REAL retornado, "
+            "e parent_id REAL da User Story. Formato: 'Task N: Título=..., ID=..., parent_id=...'"
+        ),
         agent=developer,
         context=[stories_task],
     )
