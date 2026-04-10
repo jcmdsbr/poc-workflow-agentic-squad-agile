@@ -150,7 +150,7 @@ def create_llm() -> LLM:
     return _wrap_with_rate_limit(llm)
 
 
-_MAX_SPEC_CHARS = int(os.getenv("MAX_SPEC_CHARS", str(50_000)))
+MAX_SPEC_CHARS = int(os.getenv("MAX_SPEC_CHARS", str(50_000)))
 
 
 def load_specification(path: str | None) -> str:
@@ -163,10 +163,10 @@ def load_specification(path: str | None) -> str:
             "Uso: python workflow.py <arquivo_especificacao.md>\n"
             " ou: cat spec.md | python workflow.py"
         )
-    if len(content) > _MAX_SPEC_CHARS:
+    if len(content) > MAX_SPEC_CHARS:
         logger.warning(
             "Especificação com %d caracteres excede o limite recomendado de %d. "
             "Isso pode ultrapassar o context window do LLM e degradar a qualidade.",
-            len(content), _MAX_SPEC_CHARS,
+            len(content), MAX_SPEC_CHARS,
         )
     return content
