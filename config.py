@@ -5,6 +5,7 @@ import time
 import random
 from pathlib import Path
 from dotenv import load_dotenv
+from langchain_core.runnables import Runnable
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
@@ -19,7 +20,9 @@ logging.basicConfig(
 logger = logging.getLogger("config")
 
 # ── Modelo Gemini ──
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+# Aceita "gemini-2.5-flash" ou "gemini/gemini-2.5-flash" (remove prefixo se presente)
+_raw_model = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_MODEL = _raw_model.split("/", 1)[1] if _raw_model.startswith("gemini/") else _raw_model
 PROVIDER = "gemini"
 
 # Rate limiting: requests por minuto
@@ -76,40 +79,34 @@ def _is_transient(exc: Exception) -> bool:
     return any(code in str(exc) for code in _TRANSIENT_ERRORS)
 
 
-def _wrap_with_rate_limit(llm):
-    """Envolve llm.invoke com rate limiting, retry exponencial e fallback de modelo."""
-    original_invoke = llm.invoke
+class _ThrottledLLM(Runnable):
+    """Wrapper sobre ChatGoogleGenerativeAI com rate limiting, retry e fallback.
 
-    # Cria LLM de fallback se configurado
-    fallback_invoke = None
-    if _FALLBACK_MODEL:
-        try:
-            _fallback_llm = ChatGoogleGenerativeAI(model=_FALLBACK_MODEL)
-            fallback_invoke = _fallback_llm.invoke
-            logger.info(
-                "Fallback model configurado: %s (ativado após %d falhas consecutivas)",
-                _FALLBACK_MODEL, _FALLBACK_AFTER,
-            )
-        except Exception as exc:
-            logger.warning("Não foi possível criar fallback LLM '%s': %s", _FALLBACK_MODEL, exc)
+    Herda de Runnable (não Pydantic) para suportar | e bind_tools sem
+    restrições de __setattr__.
+    """
 
-    def _throttled_invoke(*args, **kwargs):
+    def __init__(self, primary, fallback=None):
+        self._primary = primary
+        self._fallback = fallback
+
+    def invoke(self, input, config=None, **kwargs):
         _rate_limiter.wait_if_needed()
 
-        last_exception = None
+        last_exc = None
         for attempt in range(1, _MAX_RETRIES + 1):
-            use_fallback = fallback_invoke is not None and attempt > _FALLBACK_AFTER
-            call_fn = fallback_invoke if use_fallback else original_invoke
-            model_label = _FALLBACK_MODEL if use_fallback else f"gemini/{LLM_MODEL}"
+            use_fallback = self._fallback is not None and attempt > _FALLBACK_AFTER
+            llm = self._fallback if use_fallback else self._primary
+            model_label = _FALLBACK_MODEL if use_fallback else LLM_MODEL
 
             try:
                 if use_fallback and attempt == _FALLBACK_AFTER + 1:
                     logger.warning("[FALLBACK] Alternando para: %s", _FALLBACK_MODEL)
-                return call_fn(*args, **kwargs)
+                return llm.invoke(input, config, **kwargs)
             except Exception as exc:
                 if not _is_transient(exc) or attempt == _MAX_RETRIES:
                     raise
-                last_exception = exc
+                last_exc = exc
                 base = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
                 delay = base + random.uniform(0, min(base * 0.3, 10))
                 logger.warning(
@@ -119,21 +116,35 @@ def _wrap_with_rate_limit(llm):
                 time.sleep(delay)
                 _rate_limiter.wait_if_needed()
 
-        raise last_exception  # pragma: no cover
+        raise last_exc  # pragma: no cover
 
-    llm.invoke = _throttled_invoke
+    def bind_tools(self, tools, **kwargs):
+        """Vincula tools e preserva o wrapping de rate limiting."""
+        primary_bound = self._primary.bind_tools(tools, **kwargs)
+        fallback_bound = self._fallback.bind_tools(tools, **kwargs) if self._fallback else None
+        return _ThrottledLLM(primary_bound, fallback_bound)
+
+    def __getattr__(self, name: str):
+        return getattr(self._primary, name)
+
+
+def create_llm() -> _ThrottledLLM:
+    api_key = os.getenv("GEMINI_API_KEY")
+    primary = ChatGoogleGenerativeAI(model=LLM_MODEL, google_api_key=api_key)
+
+    fallback = None
+    if _FALLBACK_MODEL:
+        try:
+            fallback = ChatGoogleGenerativeAI(model=_FALLBACK_MODEL, google_api_key=api_key)
+        except Exception as exc:
+            logger.warning("Não foi possível criar fallback '%s': %s", _FALLBACK_MODEL, exc)
+
     logger.info(
         "Rate limiting: %d RPM | Retry: %d tentativas | backoff: %ds–%ds | Fallback: %s",
         LLM_RPM, _MAX_RETRIES, _RETRY_BASE_DELAY, _RETRY_MAX_DELAY,
         _FALLBACK_MODEL or "não configurado",
     )
-    return llm
-
-
-def create_llm():
-    """Cria e retorna o ChatGoogleGenerativeAI configurado com rate limiting e retry."""
-    llm = ChatGoogleGenerativeAI(model=LLM_MODEL)
-    return _wrap_with_rate_limit(llm)
+    return _ThrottledLLM(primary, fallback)
 
 
 _MAX_SPEC_CHARS = int(os.getenv("MAX_SPEC_CHARS", str(50_000)))
