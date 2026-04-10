@@ -1,4 +1,4 @@
-# poc-agent — Pipeline Multi-Agente para Azure DevOps
+# poc-workflow-agentic-squad-agile
 
 Pipeline automatizado que lê uma **especificação funcional** e cria, no Azure DevOps, a hierarquia completa de **Features → User Stories → Tasks** usando agentes de IA especializados com [LangChain](https://python.langchain.com/).
 
