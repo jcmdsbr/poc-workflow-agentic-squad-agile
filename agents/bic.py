@@ -35,30 +35,23 @@ def create_bic_agent(llm: LLM) -> Agent:
 def create_architecture_task(agent: Agent, specification: str) -> Task:
     return Task(
         description=(
-            "Analise a especificação funcional abaixo e produza um **Documento de Arquitetura Técnica** "
-            "em Markdown com as seguintes seções:\n\n"
-            "## Estrutura obrigatória do documento:\n"
+            "Analise a especificação funcional e produza um **Documento de Arquitetura** "
+            "em Markdown com no máximo 300 palavras.\n\n"
+            "## Estrutura obrigatória:\n"
             "### 1. Visão Geral\n"
-            "- Resumo em 2-3 frases do que o sistema faz e para quem.\n\n"
-            "### 2. Componentes e Responsabilidades\n"
-            "- Lista de componentes (APIs, Workers, Gateways, Bancos) com responsabilidade de cada um.\n"
-            "- Identifique as camadas: Presentation → Application → Domain → Infrastructure.\n\n"
-            "### 3. Decisões Arquiteturais\n"
-            "- Padrões escolhidos (CQRS, Event Sourcing, Saga, etc.) com justificativa.\n"
-            "- Trade-offs considerados.\n\n"
-            "### 4. Stack Tecnológico\n"
-            "- Frameworks, libs e ferramentas recomendadas (FastEndpoints, MediatR, Polly, "
-            "OpenTelemetry, EF Core, MassTransit, etc.).\n\n"
-            "### 5. Riscos e Débitos Técnicos\n"
-            "- Pontos de atenção para o time de desenvolvimento.\n\n"
-            "REGRAS:\n"
-            "- Máximo 500 palavras. Sem código, snippets ou configurações.\n"
-            "- Foque em decisões acionáveis que o time possa implementar.\n\n"
+            "- O que o sistema faz em 2 frases.\n\n"
+            "### 2. Componentes\n"
+            "- Lista de componentes com responsabilidade de cada um (1 linha por componente).\n\n"
+            "### 3. Decisões e Trade-offs\n"
+            "- Padrões escolhidos e por quê.\n\n"
+            "### 4. Stack\n"
+            "- Frameworks e libs recomendados.\n\n"
+            "REGRAS: máximo 300 palavras, sem código, sem configurações.\n\n"
             f"ESPECIFICAÇÃO FUNCIONAL:\n\n{specification}"
         ),
         expected_output=(
-            "Documento Markdown estruturado (máx 500 palavras) com seções: "
-            "Visão Geral, Componentes, Decisões Arquiteturais, Stack Tecnológico, Riscos. Sem código."
+            "Documento Markdown de arquitetura (máx 300 palavras) com: "
+            "Visão Geral, Componentes, Decisões e Stack. Sem código."
         ),
         agent=agent,
     )
