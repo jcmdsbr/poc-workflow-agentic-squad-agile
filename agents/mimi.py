@@ -6,7 +6,7 @@ def create_mimi_agent(llm: LLM, tool: AzureDevOpsTool) -> Agent:
     return Agent(
         role="Mimi — Product Owner",
         goal=(
-            "Interpretar a especificação funcional e criar 2 a 3 Features no Azure DevOps, "
+            "Interpretar a especificação funcional e criar 1 a 5 Features no Azure DevOps, "
             "cada uma representando um grande bloco de valor de negócio entregável."
         ),
         backstory=(
@@ -21,7 +21,7 @@ def create_mimi_agent(llm: LLM, tool: AzureDevOpsTool) -> Agent:
             "Você NÃO fala de tecnologia, frameworks, camadas ou arquitetura. "
             "Seu vocabulário é de negócio: fluxo, regra, processo, validação, jornada do usuário.\n\n"
             "REGRAS:\n"
-            "1) Crie no MÍNIMO 2 e no MÁXIMO 3 Features.\n"
+            "1) Crie no MÍNIMO 1 e no MÁXIMO 5 Features.\n"
             "2) Cada Feature foca em um PROCESSO DE NEGÓCIO, não em componente técnico.\n"
             "3) A descrição deve explicar o problema de negócio que a Feature resolve.\n"
             "4) Inclua as regras de negócio extraídas da especificação.\n"
@@ -31,7 +31,7 @@ def create_mimi_agent(llm: LLM, tool: AzureDevOpsTool) -> Agent:
         allow_delegation=False,
         tools=[tool],
         llm=llm,
-        max_iter=8,
+        max_iter=15,
     )
 
 
@@ -47,7 +47,7 @@ def create_features_task(agent: Agent, architecture_task: Task) -> Task:
             "## Regras para criação de Features\n"
             "- Cada Feature = um **processo de negócio** completo (ex: 'Solicitação de Estorno', "
             "'Gestão de Aprovações', 'Notificação ao Cliente').\n"
-            "- MÍNIMO 2, MÁXIMO 3 Features.\n"
+            "- MÍNIMO 1, MÁXIMO 5 Features.\n"
             "- NÃO crie Features técnicas (ex: 'Infraestrutura', 'Observabilidade', 'API Gateway').\n\n"
             "## Formato da descrição (campo `descricao`)\n"
             "A descrição DEVE ser HTML simples (NÃO Markdown). Use tags <b>, <br>, <ul>, <li>, <p>.\n"
