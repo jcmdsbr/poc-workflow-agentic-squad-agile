@@ -117,7 +117,7 @@ def _wrap_with_rate_limit(llm):
                 if not is_transient or attempt == _MAX_RETRIES:
                     raise
                 last_exception = exc
-                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))  # 5s, 10s, 20s, 40s
+                delay = _RETRY_BASE_DELAY * attempt  # 5s, 10s, 15s, 20s, 25s
                 logger.warning(
                     "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %ds... | %s",
                     attempt, _MAX_RETRIES, delay, exc_str[:120],
