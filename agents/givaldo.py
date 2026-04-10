@@ -57,7 +57,7 @@ def create_stories_task(agent: Agent, features_task: Task) -> Task:
             "3. Se algo está implícito/subentendido na spec, EXPLICITE na descrição da US.\n"
             "4. NÃO invente requisitos, regras ou cenários que não existam na especificação.\n\n"
             "## Regras para User Stories\n"
-            "- Máximo **5 User Stories por Feature**.\n"
+            "- **MÍNIMO 1**, máximo **5** User Stories por Feature. Cada Feature DEVE ter pelo menos 1 US.\n"
             "- Use **personas reais do negócio** (nunca 'Como um usuário').\n"
             "  Exemplos: Atendente de SAC, Gerente Financeiro, Cliente, "
             "Operador de Backoffice, Analista de Fraude.\n\n"
