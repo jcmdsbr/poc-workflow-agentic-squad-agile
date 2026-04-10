@@ -58,9 +58,10 @@ registry = WorkItemRegistry()
 
 class WorkItemInput(BaseModel):
     titulo: str = Field(description="Título do Work Item.")
-    descricao: str = Field(description="Descrição detalhada do Work Item.")
+    descricao: str = Field(description="Descrição detalhada do Work Item em HTML simples.")
     tipo_item: str = Field(description="Tipo do item: 'Feature', 'User Story' ou 'Task'.")
     parent_id: Optional[int] = Field(default=None, description="ID do item pai para vínculo hierárquico.")
+    criterios_aceite: Optional[str] = Field(default=None, description="Critérios de aceite em HTML (usado apenas para User Story).")
 
     @model_validator(mode="before")
     @classmethod
@@ -80,6 +81,9 @@ class WorkItemInput(BaseModel):
             "tipo": "tipo_item", "Tipo": "tipo_item", "type": "tipo_item", "Type": "tipo_item",
             "parent_id": "parent_id", "ParentId": "parent_id", "parentId": "parent_id",
             "parent": "parent_id", "Parent": "parent_id",
+            "criterios_aceite": "criterios_aceite", "CriteriosAceite": "criterios_aceite",
+            "criteriosAceite": "criterios_aceite", "acceptance_criteria": "criterios_aceite",
+            "AcceptanceCriteria": "criterios_aceite", "acceptanceCriteria": "criterios_aceite",
         }
         normalized = {}
         for key, value in data.items():
@@ -97,11 +101,14 @@ class AzureDevOpsTool(BaseTool):
         "Cria um Work Item no Azure DevOps. "
         "Tipos válidos: 'Feature', 'User Story', 'Task'. "
         "Use parent_id para vincular ao item pai. "
-        "Passe os argumentos como JSON plano: {\"titulo\": ..., \"descricao\": ..., \"tipo_item\": ..., \"parent_id\": ...}"
+        "Para User Story, use criterios_aceite para os critérios de aceite. "
+        "IMPORTANTE: descricao e criterios_aceite devem ser HTML simples (use <b>, <br>, <ul>, <li>, <p>). "
+        "NÃO use Markdown (##, **, ```). "
+        "Passe os argumentos como JSON plano: {\"titulo\": ..., \"descricao\": ..., \"tipo_item\": ..., \"parent_id\": ..., \"criterios_aceite\": ...}"
     )
     args_schema: type[BaseModel] = WorkItemInput
 
-    def _run(self, titulo: str, descricao: str, tipo_item: str, parent_id: Optional[int] = None) -> str:
+    def _run(self, titulo: str, descricao: str, tipo_item: str, parent_id: Optional[int] = None, criterios_aceite: Optional[str] = None) -> str:
         org = os.environ["AZURE_ORG"]
         project = os.environ["AZURE_PROJECT"]
         pat = os.environ["AZURE_PAT"]
@@ -144,6 +151,11 @@ class AzureDevOpsTool(BaseTool):
             {"op": "add", "path": "/fields/System.Title", "value": titulo},
             {"op": "add", "path": "/fields/System.Description", "value": descricao},
         ]
+
+        if criterios_aceite and tipo_item == "User Story":
+            payload.append(
+                {"op": "add", "path": "/fields/Microsoft.VSTS.Common.AcceptanceCriteria", "value": criterios_aceite}
+            )
 
         if parent_id:
             payload.append({
