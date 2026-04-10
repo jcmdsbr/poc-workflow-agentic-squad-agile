@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import time
+import random
 from pathlib import Path
 from dotenv import load_dotenv
 from crewai import LLM
@@ -42,7 +43,8 @@ PROVIDER = _detect_provider(LLM_MODEL)
 
 # ── Configurações específicas por provider ──
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "32768"))
+# Ollama: contexto menor = respostas mais rápidas. Aumente se a spec for muito grande.
+LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "8192"))
 
 # Rate limiting: requests por minuto (0 = sem limite, ex: Ollama local)
 _DEFAULT_RPM = {"ollama": 0, "gemini": 10, "openai": 30, "anthropic": 30}
@@ -96,8 +98,8 @@ class _RateLimiter:
 _rate_limiter = _RateLimiter(LLM_RPM)
 
 # Retry config para erros transientes (503, 429, etc.)
-_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "5"))
-_RETRY_BASE_DELAY = 5  # segundos
+_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "4"))
+_RETRY_BASE_DELAY = int(os.getenv("LLM_RETRY_BASE_DELAY", "3"))  # segundos
 
 
 def _wrap_with_rate_limit(llm):
@@ -113,13 +115,16 @@ def _wrap_with_rate_limit(llm):
                 return original_call(*args, **kwargs)
             except Exception as exc:
                 exc_str = str(exc)
-                is_transient = any(code in exc_str for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "high demand"))
+                _TRANSIENT = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "high demand", "overloaded", "quota")
+                is_transient = any(code in exc_str for code in _TRANSIENT)
                 if not is_transient or attempt == _MAX_RETRIES:
                     raise
                 last_exception = exc
-                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))  # 5s, 10s, 20s, 40s, 80s
+                # Exponential backoff com jitter para evitar thundering herd no provider
+                base = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                delay = base + random.uniform(0, min(base * 0.3, 5))
                 logger.warning(
-                    "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %ds... | %s",
+                    "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %.1fs... | %s",
                     attempt, _MAX_RETRIES, delay, exc_str[:120],
                 )
                 time.sleep(delay)
