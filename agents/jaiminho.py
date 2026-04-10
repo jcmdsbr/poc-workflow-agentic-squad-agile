@@ -36,7 +36,7 @@ def create_jaiminho_agent(llm: LLM, tool: AzureDevOpsTool) -> Agent:
         allow_delegation=False,
         tools=[tool],
         llm=llm,
-        max_iter=90,
+        max_iter=120,
     )
 
 

@@ -1,0 +1,35 @@
+# Credenciais — NUNCA devem entrar na imagem
+.env
+*.env
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Controle de versão
+.git/
+.gitignore
+
+# Ferramentas de desenvolvimento
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
+
+# Testes e cobertura
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Logs
+*.log

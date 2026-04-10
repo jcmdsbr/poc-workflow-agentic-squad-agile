@@ -109,9 +109,13 @@ class AzureDevOpsTool(BaseTool):
     args_schema: type[BaseModel] = WorkItemInput
 
     def _run(self, titulo: str, descricao: str, tipo_item: str, parent_id: Optional[int] = None, criterios_aceite: Optional[str] = None) -> str:
-        org = os.environ["AZURE_ORG"]
-        project = os.environ["AZURE_PROJECT"]
-        pat = os.environ["AZURE_PAT"]
+        org = os.getenv("AZURE_ORG")
+        project = os.getenv("AZURE_PROJECT")
+        pat = os.getenv("AZURE_PAT")
+
+        missing = [k for k, v in {"AZURE_ORG": org, "AZURE_PROJECT": project, "AZURE_PAT": pat}.items() if not v]
+        if missing:
+            return f"Erro de configuração: variáveis não definidas: {', '.join(missing)}"
 
         if tipo_item not in VALID_WORK_ITEM_TYPES:
             return f"Erro: tipo_item '{tipo_item}' inválido. Use um de: {VALID_WORK_ITEM_TYPES}"
@@ -152,12 +156,18 @@ class AzureDevOpsTool(BaseTool):
             {"op": "add", "path": "/fields/System.Description", "value": descricao},
         ]
 
-        if criterios_aceite and tipo_item == "User Story":
-            payload.append(
-                {"op": "add", "path": "/fields/Microsoft.VSTS.Common.AcceptanceCriteria", "value": criterios_aceite}
-            )
+        if criterios_aceite:
+            if tipo_item == "User Story":
+                payload.append(
+                    {"op": "add", "path": "/fields/Microsoft.VSTS.Common.AcceptanceCriteria", "value": criterios_aceite}
+                )
+            else:
+                logger.warning(
+                    "[TOOL] criterios_aceite ignorado para tipo '%s' (suportado apenas em User Story).",
+                    tipo_item,
+                )
 
-        if parent_id:
+        if parent_id is not None:
             payload.append({
                 "op": "add",
                 "path": "/relations/-",

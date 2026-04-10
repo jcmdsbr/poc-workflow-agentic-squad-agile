@@ -66,7 +66,16 @@ def main():
     )
 
     start = datetime.now(timezone.utc)
-    result = crew.kickoff()
+    try:
+        result = crew.kickoff()
+    except Exception as exc:
+        elapsed = datetime.now(timezone.utc) - start
+        logger.error("=" * 60)
+        logger.error("PIPELINE FALHOU após %s", str(elapsed).split(".")[0])
+        logger.error("Etapa ativa: verifique os logs acima para identificar o agente.")
+        logger.error("Erro: %s", exc)
+        logger.error("=" * 60)
+        raise
     elapsed = datetime.now(timezone.utc) - start
 
     logger.info("=" * 60)

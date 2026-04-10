@@ -117,7 +117,7 @@ def _wrap_with_rate_limit(llm):
                 if not is_transient or attempt == _MAX_RETRIES:
                     raise
                 last_exception = exc
-                delay = _RETRY_BASE_DELAY * attempt  # 5s, 10s, 15s, 20s, 25s
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))  # 5s, 10s, 20s, 40s, 80s
                 logger.warning(
                     "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %ds... | %s",
                     attempt, _MAX_RETRIES, delay, exc_str[:120],
@@ -145,12 +145,23 @@ def create_llm() -> LLM:
     return _wrap_with_rate_limit(llm)
 
 
+_MAX_SPEC_CHARS = int(os.getenv("MAX_SPEC_CHARS", str(50_000)))
+
+
 def load_specification(path: str | None) -> str:
     if path:
-        return Path(path).read_text(encoding="utf-8")
-    if not sys.stdin.isatty():
-        return sys.stdin.read()
-    sys.exit(
-        "Uso: python workflow.py <arquivo_especificacao.md>\n"
-        " ou: cat spec.md | python workflow.py"
-    )
+        content = Path(path).read_text(encoding="utf-8")
+    elif not sys.stdin.isatty():
+        content = sys.stdin.read()
+    else:
+        sys.exit(
+            "Uso: python workflow.py <arquivo_especificacao.md>\n"
+            " ou: cat spec.md | python workflow.py"
+        )
+    if len(content) > _MAX_SPEC_CHARS:
+        logger.warning(
+            "Especificação com %d caracteres excede o limite recomendado de %d. "
+            "Isso pode ultrapassar o context window do LLM e degradar a qualidade.",
+            len(content), _MAX_SPEC_CHARS,
+        )
+    return content
