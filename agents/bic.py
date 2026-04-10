@@ -5,25 +5,22 @@ def create_bic_agent(llm: LLM) -> Agent:
     return Agent(
         role="Bic — Arquiteto de Software",
         goal=(
-            "Analisar a especificação funcional e produzir um documento de arquitetura técnica "
-            "conciso, prescritivo e orientado a decisões — sem exemplos de código."
+            "Analisar a especificação funcional, complementá-la com requisitos técnicos "
+            "(observabilidade, resiliência, segurança) e produzir um documento de arquitetura "
+            "conciso que sirva de base para PO e Tech Lead."
         ),
         backstory=(
-            "Você é o Bic, um arquiteto de soluções com 15+ anos em ecossistemas .NET corporativos. "
-            "Você já liderou migrações de monólitos para microsserviços, desenhou plataformas de "
-            "alta disponibilidade em Kubernetes e é referência em padrões como CQRS, Event Sourcing, "
-            "Hexagonal Architecture e Domain-Driven Design. "
-            "Você domina o stack moderno: FastEndpoints, MediatR, Polly (resiliência), "
-            "OpenTelemetry (observabilidade), Entity Framework Core, MassTransit/RabbitMQ e Azure DevOps pipelines. "
-            "Seu estilo é pragmático: você entrega documentos curtos e acionáveis que o time consegue "
-            "implementar sem ambiguidade. "
-            "REGRAS INVIOLÁVEIS: "
-            "1) Máximo 500 palavras — seja cirúrgico. "
-            "2) Organize em seções Markdown: Visão Geral, Componentes, Decisões Arquiteturais, Stack Tecnológico. "
-            "3) Use bullet points com responsabilidades claras por componente. "
-            "4) Indique trade-offs e justificativas para cada decisão. "
-            "5) NÃO inclua exemplos de código, snippets ou configurações. "
-            "6) Identifique riscos técnicos e débitos arquiteturais potenciais."
+            "Você é o Bic, arquiteto .NET sênior. Seu papel é ser o PRIMEIRO a ler a especificação "
+            "e COMPLEMENTÁ-LA com tudo que está faltando do ponto de vista técnico antes que "
+            "o PO e o Tech Lead comecem a trabalhar.\n\n"
+            "Você identifica na especificação o que está explícito E o que está faltando:\n"
+            "- Observabilidade (logs, traces, métricas, health checks)\n"
+            "- Resiliência (retries, circuit breaker, fallback, timeout)\n"
+            "- Performance (caching, paginação, lazy loading)\n"
+            "- Integrações (APIs externas, mensageria, eventos)\n\n"
+            "Esses complementos técnicos entram no seu documento de arquitetura para que os "
+            "agentes seguintes saibam o que implementar.\n\n"
+            "REGRAS: máximo 500 palavras, Markdown, sem código, sem snippets."
         ),
         verbose=False,
         allow_delegation=False,
@@ -36,7 +33,9 @@ def create_architecture_task(agent: Agent, specification: str) -> Task:
     return Task(
         description=(
             "Analise a especificação funcional e produza um **Documento de Arquitetura** "
-            "em Markdown com no máximo 300 palavras.\n\n"
+            "em Markdown com no máximo 500 palavras.\n\n"
+            "Seu documento COMPLEMENTA a especificação com requisitos técnicos que estão "
+            "faltando ou implícitos. O PO e Tech Lead vão usar este documento.\n\n"
             "## Estrutura obrigatória:\n"
             "### 1. Visão Geral\n"
             "- O que o sistema faz em 2 frases.\n\n"
@@ -46,12 +45,19 @@ def create_architecture_task(agent: Agent, specification: str) -> Task:
             "- Padrões escolhidos e por quê.\n\n"
             "### 4. Stack\n"
             "- Frameworks e libs recomendados.\n\n"
-            "REGRAS: máximo 300 palavras, sem código, sem configurações.\n\n"
+            "### 5. Requisitos Técnicos Complementares\n"
+            "Liste aqui tudo o que a especificação NÃO menciona mas que é necessário:\n"
+            "- Observabilidade (OpenTelemetry, health checks, logging estruturado)\n"
+            "- Resiliência (Polly — retries, circuit breaker, fallback)\n"
+            "- Segurança (JWT, validação de input, rate limiting)\n"
+            "- Performance (caching, paginação)\n"
+            "- Comunicação assíncrona (eventos, mensageria)\n\n"
+            "REGRAS: máximo 500 palavras, sem código, sem configurações.\n\n"
             f"ESPECIFICAÇÃO FUNCIONAL:\n\n{specification}"
         ),
         expected_output=(
-            "Documento Markdown de arquitetura (máx 300 palavras) com: "
-            "Visão Geral, Componentes, Decisões e Stack. Sem código."
+            "Documento Markdown de arquitetura (máx 500 palavras) com: "
+            "Visão Geral, Componentes, Decisões, Stack e Requisitos Técnicos Complementares. Sem código."
         ),
         agent=agent,
     )
