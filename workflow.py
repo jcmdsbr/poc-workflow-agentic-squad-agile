@@ -58,10 +58,10 @@ def main():
         features_output = run_features_task(mimi, arch_output)
 
         logger.info("[3/4] %s — User Stories...", givaldo.role)
-        stories_output = run_stories_task(givaldo, features_output)
+        stories_output = run_stories_task(givaldo, features_output, specification)
 
         logger.info("[4/4] %s — Tasks...", jaiminho.role)
-        tasks_output = run_tasks_task(jaiminho, stories_output)
+        tasks_output = run_tasks_task(jaiminho, stories_output, specification)
 
     except Exception as exc:
         elapsed = datetime.now(timezone.utc) - start

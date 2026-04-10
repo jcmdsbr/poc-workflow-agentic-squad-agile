@@ -34,7 +34,8 @@ _TASK_TEMPLATE = (
     "- parent_id: ID exato da User Story\n\n"
     "Formato de saída:\n"
     "Task N: Título=<titulo>, ID=<id>, parent_id=<id da US>\n\n"
-    "USER STORIES CRIADAS:\n{context}"
+    "USER STORIES CRIADAS:\n{stories}\n\n"
+    "ESPECIFICAÇÃO (para contexto das descrições):\n{specification}"
 )
 
 
@@ -55,7 +56,10 @@ def create_jaiminho_agent(llm, tool: AzureDevOpsTool) -> Agent:
     return Agent(role="Jaiminho — Desenvolvedor .NET Sênior", runner=executor)
 
 
-def run_tasks_task(agent: Agent, stories_output: str) -> str:
-    result = agent.invoke({"input": _TASK_TEMPLATE.format(context=stories_output)})
+def run_tasks_task(agent: Agent, stories_output: str, specification: str) -> str:
+    result = agent.invoke({"input": _TASK_TEMPLATE.format(
+        stories=stories_output,
+        specification=specification,
+    )})
     return result.get("output", str(result)) if isinstance(result, dict) else str(result)
 

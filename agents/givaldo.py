@@ -17,7 +17,7 @@ _SYSTEM = (
 
 _TASK_TEMPLATE = (
     "Contexto: lista de Features com IDs reais. Use o parent_id EXATO de cada Feature.\n\n"
-    "Para cada Feature, crie 1-5 User Stories baseadas exclusivamente na spec:\n"
+    "Para cada Feature, crie 1-5 User Stories baseadas EXCLUSIVAMENTE na especificação abaixo:\n"
     "- titulo: frase curta em português (ex: 'Solicitar estorno de cobrança indevida')\n"
     "- descricao (HTML): 'Como [Persona real], quero [ação] para [valor]' "
     "+ RNs da spec + contrato API REST ou CloudEvents em <pre><code> quando aplicável\n"
@@ -26,7 +26,8 @@ _TASK_TEMPLATE = (
     "- parent_id: ID exato da Feature do contexto\n\n"
     "Formato de saída:\n"
     "US N: Título=<titulo>, ID=<id>, parent_id=<id da Feature>\n\n"
-    "FEATURES CRIADAS:\n{context}"
+    "FEATURES CRIADAS:\n{features}\n\n"
+    "ESPECIFICAÇÃO:\n{specification}"
 )
 
 
@@ -47,7 +48,10 @@ def create_givaldo_agent(llm, tool: AzureDevOpsTool) -> Agent:
     return Agent(role="Givaldo — Tech Lead", runner=executor)
 
 
-def run_stories_task(agent: Agent, features_output: str) -> str:
-    result = agent.invoke({"input": _TASK_TEMPLATE.format(context=features_output)})
+def run_stories_task(agent: Agent, features_output: str, specification: str) -> str:
+    result = agent.invoke({"input": _TASK_TEMPLATE.format(
+        features=features_output,
+        specification=specification,
+    )})
     return result.get("output", str(result)) if isinstance(result, dict) else str(result)
 
