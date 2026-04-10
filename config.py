@@ -5,6 +5,7 @@ import time
 import random
 from pathlib import Path
 from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -17,57 +18,16 @@ logging.basicConfig(
 
 logger = logging.getLogger("config")
 
-# ── Modelo ──
-LLM_MODEL = os.getenv("LLM_MODEL", "ollama/llama3.1")
+# ── Modelo Gemini ──
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+PROVIDER = "gemini"
 
-# ── Detecção automática de provider pelo prefixo do modelo ──
-_KNOWN_PROVIDERS = {"ollama", "gemini", "openai", "anthropic"}
-
-
-def _detect_provider(model: str) -> str:
-    prefix = model.split("/")[0]
-    if prefix in _KNOWN_PROVIDERS:
-        return prefix
-    for provider in _KNOWN_PROVIDERS:
-        if provider in model.lower():
-            logger.warning(
-                "Prefixo '%s' não reconhecido. Detectado '%s' pelo nome do modelo.",
-                prefix, provider,
-            )
-            return provider
-    return prefix
-
-
-def _model_name(model: str) -> str:
-    """Remove o prefixo do provider: 'gemini/gemini-2.5-flash' → 'gemini-2.5-flash'."""
-    parts = model.split("/", 1)
-    return parts[1] if len(parts) == 2 and parts[0] in _KNOWN_PROVIDERS else model
-
-
-PROVIDER = _detect_provider(LLM_MODEL)
-
-# ── Configurações específicas por provider ──
-OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "8192"))
-
-# Rate limiting: requests por minuto (0 = sem limite, ex: Ollama local)
-_DEFAULT_RPM = {"ollama": 0, "gemini": 10, "openai": 30, "anthropic": 30}
-LLM_RPM = int(os.getenv("LLM_RPM", str(_DEFAULT_RPM.get(PROVIDER, 15))))
-
-# Mapa de env vars obrigatórias por provider
-_PROVIDER_KEY_MAP = {
-    "gemini": "GEMINI_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-}
+# Rate limiting: requests por minuto
+LLM_RPM = int(os.getenv("LLM_RPM", "10"))
 
 
 def validate_config():
-    required = ["AZURE_ORG", "AZURE_PROJECT", "AZURE_PAT"]
-
-    provider_key = _PROVIDER_KEY_MAP.get(PROVIDER)
-    if provider_key:
-        required.append(provider_key)
+    required = ["AZURE_ORG", "AZURE_PROJECT", "AZURE_PAT", "GEMINI_API_KEY"]
 
     missing = [v for v in required if not os.getenv(v)]
     if missing:
@@ -76,7 +36,7 @@ def validate_config():
             f"Copie .env.example para .env e preencha os valores."
         )
 
-    logger.info("Provider: %s | Modelo: %s | RPM: %s", PROVIDER, LLM_MODEL, LLM_RPM or "ilimitado")
+    logger.info("Modelo: %s | RPM: %s", LLM_MODEL, LLM_RPM)
 
 
 class _RateLimiter:
@@ -116,30 +76,6 @@ def _is_transient(exc: Exception) -> bool:
     return any(code in str(exc) for code in _TRANSIENT_ERRORS)
 
 
-def _build_raw_llm(model: str):
-    """Cria um LangChain BaseChatModel sem rate limiting."""
-    name = _model_name(model)
-    provider = _detect_provider(model)
-
-    if provider == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(model=name, base_url=OLLAMA_BASE, num_ctx=LLM_NUM_CTX)
-    elif provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model=name)
-    elif provider == "openai":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=name)
-    elif provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic  # pip install langchain-anthropic
-        return ChatAnthropic(model=name)
-    else:
-        raise ValueError(
-            f"Provider '{provider}' não suportado. Use: ollama, gemini, openai ou anthropic.\n"
-            f"Formato esperado em LLM_MODEL: <provider>/<modelo>  ex: gemini/gemini-2.5-flash"
-        )
-
-
 def _wrap_with_rate_limit(llm):
     """Envolve llm.invoke com rate limiting, retry exponencial e fallback de modelo."""
     original_invoke = llm.invoke
@@ -148,7 +84,7 @@ def _wrap_with_rate_limit(llm):
     fallback_invoke = None
     if _FALLBACK_MODEL:
         try:
-            _fallback_llm = _build_raw_llm(_FALLBACK_MODEL)
+            _fallback_llm = ChatGoogleGenerativeAI(model=_FALLBACK_MODEL)
             fallback_invoke = _fallback_llm.invoke
             logger.info(
                 "Fallback model configurado: %s (ativado após %d falhas consecutivas)",
@@ -164,7 +100,7 @@ def _wrap_with_rate_limit(llm):
         for attempt in range(1, _MAX_RETRIES + 1):
             use_fallback = fallback_invoke is not None and attempt > _FALLBACK_AFTER
             call_fn = fallback_invoke if use_fallback else original_invoke
-            model_label = _FALLBACK_MODEL if use_fallback else LLM_MODEL
+            model_label = _FALLBACK_MODEL if use_fallback else f"gemini/{LLM_MODEL}"
 
             try:
                 if use_fallback and attempt == _FALLBACK_AFTER + 1:
@@ -195,13 +131,9 @@ def _wrap_with_rate_limit(llm):
 
 
 def create_llm():
-    """Cria e retorna o LangChain BaseChatModel configurado com rate limiting e retry."""
-    llm = _build_raw_llm(LLM_MODEL)
-    if PROVIDER != "ollama":
-        llm = _wrap_with_rate_limit(llm)
-    else:
-        logger.info("Ollama local: rate limiting desativado")
-    return llm
+    """Cria e retorna o ChatGoogleGenerativeAI configurado com rate limiting e retry."""
+    llm = ChatGoogleGenerativeAI(model=LLM_MODEL)
+    return _wrap_with_rate_limit(llm)
 
 
 _MAX_SPEC_CHARS = int(os.getenv("MAX_SPEC_CHARS", str(50_000)))

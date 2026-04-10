@@ -1,8 +1,5 @@
-langchain>=0.3.0,<1.0
-langchain-core>=0.3.0,<1.0
+langchain>=0.3.0,<3.0
+langchain-core>=0.3.0,<3.0
 langchain-google-genai>=2.0.0,<3.0
-langchain-ollama>=0.2.0,<1.0
-# langchain-openai>=0.2.0,<1.0    # descomente se usar OpenAI
-# langchain-anthropic>=0.3.0,<1.0 # descomente se usar Anthropic
 requests>=2.31.0,<3.0
 python-dotenv>=1.0.1,<2.0

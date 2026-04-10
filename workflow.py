@@ -3,7 +3,7 @@ import os
 import logging
 from datetime import datetime, timezone
 
-from config import validate_config, create_llm, load_specification, LLM_MODEL, PROVIDER
+from config import validate_config, create_llm, load_specification, LLM_MODEL
 from tools import AzureDevOpsTool
 from agents import (
     create_bic_agent, run_architecture_task,
@@ -24,7 +24,7 @@ def main():
     logger.info("=" * 60)
     logger.info("PIPELINE DE AGENTES — INÍCIO")
     logger.info("=" * 60)
-    logger.info("Provider: %s | Modelo: %s", PROVIDER, LLM_MODEL)
+    logger.info("Modelo: %s", LLM_MODEL)
     logger.info("Especificação: %s (%d caracteres)", spec_path or "stdin", len(specification))
     logger.info("Azure DevOps: org=%s, project=%s", os.getenv("AZURE_ORG"), os.getenv("AZURE_PROJECT"))
     logger.info("-" * 60)
