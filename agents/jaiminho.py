@@ -40,7 +40,7 @@ def create_jaiminho_agent(llm, tool: AzureDevOpsTool) -> Agent:
     return make_tool_agent("Jaiminho — Desenvolvedor .NET Sênior", llm, tool, _SYSTEM, max_iterations=120)
 
 
-def run_tasks_task(agent: Agent, stories_output: str, specification: str) -> str:
+def create_tasks(agent: Agent, stories_output: str, specification: str) -> str:
     return agent.invoke({"input": _TASK_TEMPLATE.format(
         stories=stories_output,
         specification=specification,

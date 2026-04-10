@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from config import validate_config, create_llm, load_specification, LLM_MODEL
 from tools import AzureDevOpsTool
 from agents import (
-    create_bic_agent, run_architecture_task,
-    create_mimi_agent, run_features_task,
-    create_givaldo_agent, run_stories_task,
-    create_jaiminho_agent, run_tasks_task,
+    create_bic_agent, generate_architecture,
+    create_mimi_agent, create_features,
+    create_givaldo_agent, create_stories,
+    create_jaiminho_agent, create_tasks,
 )
 
 logger = logging.getLogger("workflow")
@@ -52,16 +52,16 @@ def main():
     start = datetime.now(timezone.utc)
     try:
         logger.info("[1/4] %s — Arquitetura...", bic.role)
-        arch_output = run_architecture_task(bic, specification)
+        arch_output = generate_architecture(bic, specification)
 
         logger.info("[2/4] %s — Features...", mimi.role)
-        features_output = run_features_task(mimi, arch_output)
+        features_output = create_features(mimi, arch_output)
 
         logger.info("[3/4] %s — User Stories...", givaldo.role)
-        stories_output = run_stories_task(givaldo, features_output, specification)
+        stories_output = create_stories(givaldo, features_output, specification)
 
         logger.info("[4/4] %s — Tasks...", jaiminho.role)
-        tasks_output = run_tasks_task(jaiminho, stories_output, specification)
+        tasks_output = create_tasks(jaiminho, stories_output, specification)
 
     except Exception as exc:
         elapsed = datetime.now(timezone.utc) - start

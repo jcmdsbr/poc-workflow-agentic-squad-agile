@@ -31,6 +31,6 @@ def create_bic_agent(llm) -> Agent:
     return Agent(role="Bic — Arquiteto .NET", runner=chain)
 
 
-def run_architecture_task(agent: Agent, specification: str) -> str:
+def generate_architecture(agent: Agent, specification: str) -> str:
     return agent.invoke({"input": _TASK_TEMPLATE.format(specification=specification)})
 

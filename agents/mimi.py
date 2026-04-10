@@ -24,6 +24,6 @@ def create_mimi_agent(llm, tool: AzureDevOpsTool) -> Agent:
     return make_tool_agent("Mimi — Product Owner", llm, tool, _SYSTEM, max_iterations=15)
 
 
-def run_features_task(agent: Agent, architecture_output: str) -> str:
+def create_features(agent: Agent, architecture_output: str) -> str:
     return agent.invoke({"input": _TASK_TEMPLATE.format(context=architecture_output)})
 

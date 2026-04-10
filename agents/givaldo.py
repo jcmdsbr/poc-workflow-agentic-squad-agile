@@ -32,7 +32,7 @@ def create_givaldo_agent(llm, tool: AzureDevOpsTool) -> Agent:
     return make_tool_agent("Givaldo — Tech Lead", llm, tool, _SYSTEM, max_iterations=25)
 
 
-def run_stories_task(agent: Agent, features_output: str, specification: str) -> str:
+def create_stories(agent: Agent, features_output: str, specification: str) -> str:
     return agent.invoke({"input": _TASK_TEMPLATE.format(
         features=features_output,
         specification=specification,
