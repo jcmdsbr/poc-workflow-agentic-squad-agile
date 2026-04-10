@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 from requests.auth import HTTPBasicAuth
-from crewai.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, model_validator
 from typing import Any, Optional
 
