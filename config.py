@@ -98,8 +98,10 @@ class _RateLimiter:
 _rate_limiter = _RateLimiter(LLM_RPM)
 
 # Retry config para erros transientes (503, 429, etc.)
-_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "4"))
-_RETRY_BASE_DELAY = int(os.getenv("LLM_RETRY_BASE_DELAY", "3"))  # segundos
+# 503 "high demand" do Gemini pode durar minutos — defaults conservadores
+_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "6"))
+_RETRY_BASE_DELAY = int(os.getenv("LLM_RETRY_BASE_DELAY", "10"))  # segundos
+_RETRY_MAX_DELAY = int(os.getenv("LLM_RETRY_MAX_DELAY", "60"))   # teto do backoff
 
 
 def _wrap_with_rate_limit(llm):
@@ -120,12 +122,12 @@ def _wrap_with_rate_limit(llm):
                 if not is_transient or attempt == _MAX_RETRIES:
                     raise
                 last_exception = exc
-                # Exponential backoff com jitter para evitar thundering herd no provider
-                base = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                # Exponential backoff com jitter e teto para evitar esperas infinitas
+                base = min(_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _RETRY_MAX_DELAY)
                 delay = base + random.uniform(0, min(base * 0.3, 5))
                 logger.warning(
-                    "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %.1fs... | %s",
-                    attempt, _MAX_RETRIES, delay, exc_str[:120],
+                    "[RETRY] Erro transiente (tentativa %d/%d). Aguardando %.1fs (base=%ds, teto=%ds)... | %s",
+                    attempt, _MAX_RETRIES, delay, base, _RETRY_MAX_DELAY, exc_str[:120],
                 )
                 time.sleep(delay)
                 _rate_limiter.wait_if_needed()
@@ -133,7 +135,10 @@ def _wrap_with_rate_limit(llm):
         raise last_exception  # pragma: no cover
 
     llm.call = _throttled_call
-    logger.info("Rate limiting ativo: %d RPM | Retry: até %d tentativas", LLM_RPM, _MAX_RETRIES)
+    logger.info(
+        "Rate limiting ativo: %d RPM | Retry: até %d tentativas | backoff: %ds–%ds",
+        LLM_RPM, _MAX_RETRIES, _RETRY_BASE_DELAY, _RETRY_MAX_DELAY,
+    )
     return llm
 
 
